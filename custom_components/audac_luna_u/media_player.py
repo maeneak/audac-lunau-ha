@@ -16,13 +16,11 @@ from .const import (
     DEFAULT_INPUTS,
     DEFAULT_ZONES,
     CONF_INPUTS,
-    CONF_INPUT_NAMES,
-    CONF_ZONE_NAMES,
     CONF_ZONES,
     DATA_COORDINATOR,
 )
 from .coordinator import LunaUCoordinator
-from .utils import split_names
+from .utils import get_entity_names
 
 MIN_DB = -90
 MAX_DB = 0
@@ -52,16 +50,8 @@ async def async_setup_entry(
 
     zone_count = entry.options.get(CONF_ZONES, DEFAULT_ZONES)
     input_count = entry.options.get(CONF_INPUTS, DEFAULT_INPUTS)
-    zone_names = split_names(
-        entry.options.get(CONF_ZONE_NAMES) or entry.data.get(CONF_ZONE_NAMES),
-        zone_count,
-        "Zone",
-    )
-    input_names = split_names(
-        entry.options.get(CONF_INPUT_NAMES) or entry.data.get(CONF_INPUT_NAMES),
-        input_count,
-        "Input",
-    )
+    zone_names = get_entity_names(entry.options, zone_count, "Zone")
+    input_names = get_entity_names(entry.options, input_count, "Input")
 
     entities = [
         LunaZoneMediaPlayer(

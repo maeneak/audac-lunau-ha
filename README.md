@@ -33,20 +33,22 @@ During setup, you will provide:
 
 **Options**
 After adding the integration, go to the integration’s **Options** to configure:
+
+*Step 1 – Counts & polling*
 - Zones (default `8`)
 - Inputs (default `8`)
 - GPIO outputs (default `12`)
 - Poll interval in seconds (default `10`)
-- Zone names (comma-separated)
-- Input names (comma-separated)
-- GPIO names (comma-separated)
 
-Example names (comma-separated):
-```
-Zone 1, Zone 2, Lobby, Patio, Office, Bar, Dining, Lounge
-Input 1, Input 2, TV, Music, Mic 1, Mic 2, PC, Aux
-Door, Projector, Screen, Amp, Relay 5, Relay 6, Relay 7, Relay 8, Relay 9, Relay 10, Relay 11, Relay 12
-```
+*Step 2 – Zone names*
+Each zone gets its own text box, pre-filled with a default name (`Zone 1`, `Zone 2`, …).
+Change any name to something meaningful (e.g. `Lobby`, `Patio`).
+
+*Step 3 – Input names*
+Same idea — one text box per input (`Input 1`, `Input 2`, …).
+
+*Step 4 – GPIO names*
+One text box per GPIO output (`GPIO 1`, `GPIO 2`, …).
 
 **Entities**
 - `media_player` (one per zone)

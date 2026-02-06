@@ -3,19 +3,16 @@ from __future__ import annotations
 
 import re
 
-from .const import NAME_DELIMITER
 
+def get_entity_names(config: dict, count: int, prefix: str) -> list[str]:
+    """Get entity names from config options, falling back to defaults.
 
-def split_names(raw: str | None, count: int, prefix: str) -> list[str]:
-    """Split comma-separated names and pad with defaults."""
-    if not raw:
-        return [f"{prefix} {i}" for i in range(1, count + 1)]
-    parts = [p.strip() for p in raw.split(NAME_DELIMITER)]
-    parts = [p for p in parts if p]
-    names = []
-    for i in range(1, count + 1):
-        names.append(parts[i - 1] if i - 1 < len(parts) else f"{prefix} {i}")
-    return names
+    Keys are expected as '{prefix} 1', '{prefix} 2', etc.
+    """
+    return [
+        config.get(f"{prefix} {i}", f"{prefix} {i}")
+        for i in range(1, count + 1)
+    ]
 
 
 def parse_bool(value: str | None) -> bool | None:

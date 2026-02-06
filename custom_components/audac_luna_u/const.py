@@ -13,13 +13,8 @@ DEFAULT_POLL_INTERVAL = 10  # seconds
 CONF_ADDRESS = "address"
 CONF_ZONES = "zones"
 CONF_INPUTS = "inputs"
-CONF_ZONE_NAMES = "zone_names"
-CONF_INPUT_NAMES = "input_names"
 CONF_GPO_COUNT = "gpo_count"
-CONF_GPO_NAMES = "gpo_names"
 CONF_POLL_INTERVAL = "poll_interval"
 
 DATA_CLIENT = "client"
 DATA_COORDINATOR = "coordinator"
-
-NAME_DELIMITER = ","

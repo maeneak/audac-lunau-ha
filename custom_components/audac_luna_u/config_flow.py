@@ -23,9 +23,6 @@ from .const import (
     CONF_INPUTS,
     CONF_GPO_COUNT,
     CONF_POLL_INTERVAL,
-    CONF_ZONE_NAMES,
-    CONF_INPUT_NAMES,
-    CONF_GPO_NAMES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -39,9 +36,6 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Optional(CONF_ADDRESS, default=DEFAULT_ADDRESS): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=255)
         ),
-        vol.Optional(CONF_ZONE_NAMES, default=""): str,
-        vol.Optional(CONF_INPUT_NAMES, default=""): str,
-        vol.Optional(CONF_GPO_NAMES, default=""): str,
     }
 )
 
@@ -88,65 +82,110 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options flow."""
+    """Handle options flow with per-entity name configuration."""
+
+    def __init__(self) -> None:
+        """Initialise mutable state for the multi-step flow."""
+        self._options: dict[str, Any] = {}
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
+        """Step 1: Configure counts and poll interval."""
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            self._options = dict(user_input)
+            return await self.async_step_zone_names()
 
+        current = {**self.config_entry.data, **self.config_entry.options}
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
                     vol.Optional(
                         CONF_ZONES,
-                        default=self.config_entry.options.get(
-                            CONF_ZONES,
-                            self.config_entry.data.get(CONF_ZONES, DEFAULT_ZONES),
-                        ),
+                        default=current.get(CONF_ZONES, DEFAULT_ZONES),
                     ): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
                     vol.Optional(
                         CONF_INPUTS,
-                        default=self.config_entry.options.get(
-                            CONF_INPUTS,
-                            self.config_entry.data.get(CONF_INPUTS, DEFAULT_INPUTS),
-                        ),
+                        default=current.get(CONF_INPUTS, DEFAULT_INPUTS),
                     ): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
                     vol.Optional(
                         CONF_GPO_COUNT,
-                        default=self.config_entry.options.get(
-                            CONF_GPO_COUNT,
-                            self.config_entry.data.get(CONF_GPO_COUNT, DEFAULT_GPO_COUNT),
-                        ),
+                        default=current.get(CONF_GPO_COUNT, DEFAULT_GPO_COUNT),
                     ): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
                     vol.Optional(
                         CONF_POLL_INTERVAL,
-                        default=self.config_entry.options.get(
-                            CONF_POLL_INTERVAL,
-                            self.config_entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
-                        ),
+                        default=current.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
                     ): vol.All(vol.Coerce(int), vol.Range(min=1, max=300)),
-                    vol.Optional(
-                        CONF_ZONE_NAMES,
-                        default=self.config_entry.options.get(
-                            CONF_ZONE_NAMES,
-                            self.config_entry.data.get(CONF_ZONE_NAMES, ""),
-                        ),
-                    ): str,
-                    vol.Optional(
-                        CONF_INPUT_NAMES,
-                        default=self.config_entry.options.get(
-                            CONF_INPUT_NAMES,
-                            self.config_entry.data.get(CONF_INPUT_NAMES, ""),
-                        ),
-                    ): str,
-                    vol.Optional(
-                        CONF_GPO_NAMES,
-                        default=self.config_entry.options.get(
-                            CONF_GPO_NAMES,
-                            self.config_entry.data.get(CONF_GPO_NAMES, ""),
-                        ),
-                    ): str,
                 }
             ),
         )
+
+    async def async_step_zone_names(self, user_input: dict[str, Any] | None = None):
+        """Step 2: Name each zone."""
+        if user_input is not None:
+            self._options.update(user_input)
+            return await self.async_step_input_names()
+
+        zone_count = self._options.get(CONF_ZONES, DEFAULT_ZONES)
+        current = {**self.config_entry.data, **self.config_entry.options}
+        schema: dict = {}
+        for i in range(1, zone_count + 1):
+            key = f"Zone {i}"
+            schema[vol.Optional(key, default=current.get(key, key))] = str
+
+        return self.async_show_form(
+            step_id="zone_names",
+            data_schema=vol.Schema(schema),
+        )
+
+    async def async_step_input_names(self, user_input: dict[str, Any] | None = None):
+        """Step 3: Name each input."""
+        if user_input is not None:
+            self._options.update(user_input)
+            return await self.async_step_gpo_names()
+
+        input_count = self._options.get(CONF_INPUTS, DEFAULT_INPUTS)
+        current = {**self.config_entry.data, **self.config_entry.options}
+        schema: dict = {}
+        for i in range(1, input_count + 1):
+            key = f"Input {i}"
+            schema[vol.Optional(key, default=current.get(key, key))] = str
+
+        return self.async_show_form(
+            step_id="input_names",
+            data_schema=vol.Schema(schema),
+        )
+
+    async def async_step_gpo_names(self, user_input: dict[str, Any] | None = None):
+        """Step 4: Name each GPIO output."""
+        if user_input is not None:
+            self._options.update(user_input)
+            # Strip orphaned name keys from previous higher counts
+            self._prune_stale_name_keys()
+            return self.async_create_entry(title="", data=self._options)
+
+        gpo_count = self._options.get(CONF_GPO_COUNT, DEFAULT_GPO_COUNT)
+        current = {**self.config_entry.data, **self.config_entry.options}
+        schema: dict = {}
+        for i in range(1, gpo_count + 1):
+            key = f"GPIO {i}"
+            schema[vol.Optional(key, default=current.get(key, key))] = str
+
+        return self.async_show_form(
+            step_id="gpo_names",
+            data_schema=vol.Schema(schema),
+        )
+
+    def _prune_stale_name_keys(self) -> None:
+        """Remove name keys that exceed the current counts."""
+        import re
+
+        limits = {"Zone": self._options.get(CONF_ZONES, DEFAULT_ZONES),
+                  "Input": self._options.get(CONF_INPUTS, DEFAULT_INPUTS),
+                  "GPIO": self._options.get(CONF_GPO_COUNT, DEFAULT_GPO_COUNT)}
+        pattern = re.compile(r"^(Zone|Input|GPIO) (\d+)$")
+        stale = [
+            k for k in self._options
+            if (m := pattern.match(k)) and int(m.group(2)) > limits.get(m.group(1), 0)
+        ]
+        for k in stale:
+            del self._options[k]

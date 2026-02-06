@@ -11,11 +11,10 @@ from .const import (
     DOMAIN,
     DEFAULT_GPO_COUNT,
     CONF_GPO_COUNT,
-    CONF_GPO_NAMES,
     DATA_COORDINATOR,
 )
 from .coordinator import LunaUCoordinator
-from .utils import split_names
+from .utils import get_entity_names
 
 
 async def async_setup_entry(
@@ -27,11 +26,7 @@ async def async_setup_entry(
     coordinator: LunaUCoordinator = data[DATA_COORDINATOR]
 
     gpo_count = entry.options.get(CONF_GPO_COUNT, DEFAULT_GPO_COUNT)
-    gpo_names = split_names(
-        entry.options.get(CONF_GPO_NAMES) or entry.data.get(CONF_GPO_NAMES),
-        gpo_count,
-        "GPIO",
-    )
+    gpo_names = get_entity_names(entry.options, gpo_count, "GPIO")
 
     entities = [
         LunaGpoSwitch(

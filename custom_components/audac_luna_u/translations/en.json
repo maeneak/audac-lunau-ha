@@ -8,10 +8,7 @@
         "data": {
           "host": "Host",
           "port": "Port",
-          "address": "Device address",
-          "zone_names": "Zone names (comma-separated)",
-          "input_names": "Input names (comma-separated)",
-          "gpo_names": "GPIO names (comma-separated)"
+          "address": "Device address"
         }
       }
     },
@@ -23,18 +20,26 @@
     "step": {
       "init": {
         "title": "Luna-U Options",
-        "description": "Set zone/input counts and optional custom names (comma-separated).",
+        "description": "Configure zone, input, and GPIO counts.",
         "data": {
           "zones": "Zones",
           "inputs": "Inputs",
           "gpo_count": "GPIO outputs",
-          "poll_interval": "Poll interval (seconds)",
-          "zone_names": "Zone names (comma-separated)",
-          "input_names": "Input names (comma-separated)",
-          "gpo_names": "GPIO names (comma-separated)"
+          "poll_interval": "Poll interval (seconds)"
         }
+      },
+      "zone_names": {
+        "title": "Zone Names",
+        "description": "Set a custom name for each zone."
+      },
+      "input_names": {
+        "title": "Input Names",
+        "description": "Set a custom name for each input."
+      },
+      "gpo_names": {
+        "title": "GPIO Names",
+        "description": "Set a custom name for each GPIO output."
       }
     }
   }
 }
-
