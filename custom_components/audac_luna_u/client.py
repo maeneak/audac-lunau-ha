@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import asyncio
 import logging
-from typing import Callable, Deque, Optional
+from typing import Callable
 from collections import deque
 
 _LOGGER = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ def build_message(
     return f"#|{destination}|{source}|{type_block}|{arguments}|{crc}|"
 
 
-def parse_message(line: str) -> Optional[LunaMessage]:
+def parse_message(line: str) -> LunaMessage | None:
     raw = line.strip()
     if not raw:
         return None
@@ -70,8 +70,10 @@ def parse_message(line: str) -> Optional[LunaMessage]:
 class LunaUClient:
     """Async TCP client for Luna-U."""
 
-    MAX_RECONNECT_ATTEMPTS = 3
+    MAX_RECONNECT_ATTEMPTS = 5
     RECONNECT_BASE_DELAY = 1.0
+    CONNECTION_TIMEOUT = 10.0
+    MAX_PENDING = 50
 
     def __init__(self, host: str, port: int, address: int, source_id: int = 1) -> None:
         self._host = host
@@ -84,10 +86,9 @@ class LunaUClient:
         self._read_task: asyncio.Task | None = None
         self._write_lock = asyncio.Lock()
         self._connect_lock = asyncio.Lock()
-        self._pending: Deque[tuple[str, str, str, asyncio.Future]] = deque()
+        self._pending: deque[tuple[str, str, str, asyncio.Future]] = deque()
         self._listeners: list[Callable[[LunaMessage], None]] = []
         self._connected = asyncio.Event()
-        self._reconnecting = False
 
     @property
     def destination(self) -> str:
@@ -97,42 +98,62 @@ class LunaUClient:
     def source(self) -> str:
         return f"CLIENT>{self._source_id}"
 
-    async def connect(self) -> None:
-        """Connect to the Luna-U device."""
+    @property
+    def connected(self) -> bool:
+        """Return whether the client is currently connected."""
+        return self._connected.is_set()
+
+    async def _connect_unlocked(self) -> None:
+        """Internal connect without lock. Caller must hold _connect_lock."""
         if self._writer and not self._writer.is_closing() and self._connected.is_set():
             return
+        # Cancel any stale reader task before creating a new one
+        if self._read_task and not self._read_task.done():
+            self._read_task.cancel()
+            self._read_task = None
+        _LOGGER.debug("Connecting to Luna-U at %s:%s", self._host, self._port)
+        self._reader, self._writer = await asyncio.wait_for(
+            asyncio.open_connection(self._host, self._port),
+            timeout=self.CONNECTION_TIMEOUT,
+        )
+        self._connected.set()
+        self._read_task = asyncio.create_task(self._reader_loop())
+        _LOGGER.info("Connected to Luna-U at %s:%s", self._host, self._port)
+
+    async def connect(self) -> None:
+        """Connect to the Luna-U device."""
         async with self._connect_lock:
-            # Double-check after acquiring lock
-            if self._writer and not self._writer.is_closing() and self._connected.is_set():
-                return
-            _LOGGER.debug("Connecting to Luna-U at %s:%s", self._host, self._port)
-            self._reader, self._writer = await asyncio.open_connection(self._host, self._port)
-            self._connected.set()
-            self._read_task = asyncio.create_task(self._reader_loop())
-            _LOGGER.info("Connected to Luna-U at %s:%s", self._host, self._port)
+            await self._connect_unlocked()
 
     async def ensure_connected(self) -> None:
         """Ensure connection with automatic reconnection on failure."""
         if self._connected.is_set():
             return
-        for attempt in range(self.MAX_RECONNECT_ATTEMPTS):
-            try:
-                await self.connect()
+        async with self._connect_lock:
+            # Re-check after acquiring lock — another coroutine may have reconnected
+            if self._connected.is_set():
                 return
-            except Exception as exc:
-                delay = self.RECONNECT_BASE_DELAY * (2 ** attempt)
-                _LOGGER.warning(
-                    "Connection attempt %d/%d failed: %s. Retrying in %.1fs",
-                    attempt + 1, self.MAX_RECONNECT_ATTEMPTS, exc, delay
-                )
-                if attempt < self.MAX_RECONNECT_ATTEMPTS - 1:
-                    await asyncio.sleep(delay)
-        raise ConnectionError(
-            f"Failed to connect to Luna-U at {self._host}:{self._port} "
-            f"after {self.MAX_RECONNECT_ATTEMPTS} attempts"
-        )
+            # Clean up any stale connection resources before reconnecting
+            await self._close_unlocked()
+            for attempt in range(self.MAX_RECONNECT_ATTEMPTS):
+                try:
+                    await self._connect_unlocked()
+                    return
+                except Exception as exc:
+                    delay = self.RECONNECT_BASE_DELAY * (2 ** attempt)
+                    _LOGGER.warning(
+                        "Connection attempt %d/%d failed: %s. Retrying in %.1fs",
+                        attempt + 1, self.MAX_RECONNECT_ATTEMPTS, exc, delay,
+                    )
+                    if attempt < self.MAX_RECONNECT_ATTEMPTS - 1:
+                        await asyncio.sleep(delay)
+            raise ConnectionError(
+                f"Failed to connect to Luna-U at {self._host}:{self._port} "
+                f"after {self.MAX_RECONNECT_ATTEMPTS} attempts"
+            )
 
-    async def close(self) -> None:
+    async def _close_unlocked(self) -> None:
+        """Internal close without lock. Caller must hold _connect_lock."""
         self._connected.clear()
         if self._read_task:
             self._read_task.cancel()
@@ -146,9 +167,15 @@ class LunaUClient:
             self._writer = None
         self._reader = None
 
+    async def close(self) -> None:
+        """Close the connection."""
+        async with self._connect_lock:
+            await self._close_unlocked()
+
     async def _reader_loop(self) -> None:
         try:
-            assert self._reader is not None
+            if self._reader is None:
+                return
             while True:
                 line = await self._reader.readline()
                 if not line:
@@ -180,30 +207,39 @@ class LunaUClient:
             msg.msg_type, msg.target, msg.command, msg.arguments
         )
         if msg.msg_type == "GET_RSP":
-            for pending in list(self._pending):
+            matched: tuple[str, str, str, asyncio.Future] | None = None
+            for pending in self._pending:
                 expect_type, expect_target, expect_command, fut = pending
                 if (
                     expect_type == msg.msg_type
                     and expect_target == msg.target
                     and expect_command == msg.command
                 ):
-                    self._pending.remove(pending)
-                    if not fut.done():
-                        fut.set_result(msg)
+                    matched = pending
                     break
+            if matched is not None:
+                self._pending.remove(matched)
+                if not matched[3].done():
+                    matched[3].set_result(msg)
         for listener in self._listeners:
             try:
                 listener(msg)
             except Exception:  # pragma: no cover - defensive
-                _LOGGER.debug("Listener error", exc_info=True)
+                _LOGGER.warning("Listener error", exc_info=True)
 
     def add_listener(self, cb: Callable[[LunaMessage], None]) -> None:
         self._listeners.append(cb)
 
+    def remove_listener(self, cb: Callable[[LunaMessage], None]) -> None:
+        """Remove a message listener."""
+        if cb in self._listeners:
+            self._listeners.remove(cb)
+
     async def _send(self, payload: str) -> None:
         """Send a command payload to the device."""
         await self.ensure_connected()
-        assert self._writer is not None
+        if not self._writer or self._writer.is_closing():
+            raise ConnectionError("Not connected")
         _LOGGER.debug("TX: %s", payload)
         async with self._write_lock:
             self._writer.write((payload + "\r\n").encode())
@@ -219,8 +255,11 @@ class LunaUClient:
     ) -> LunaMessage:
         """Send a request and wait for a response."""
         await self.ensure_connected()
+        if len(self._pending) >= self.MAX_PENDING:
+            raise ConnectionError("Too many pending requests")
         payload = build_message(self.destination, self.source, msg_type, target, command, arguments)
         fut = asyncio.get_running_loop().create_future()
+        # Per protocol spec, device always responds with GET_RSP for both GET_REQ and SET_REQ
         pending = ("GET_RSP", target, command, fut)
         self._pending.append(pending)
         try:
@@ -233,7 +272,7 @@ class LunaUClient:
                 fut.cancel()
             raise
 
-    async def get_value(self, target: str, command: str, timeout: float = 2.5) -> Optional[LunaMessage]:
+    async def get_value(self, target: str, command: str, timeout: float = 2.5) -> LunaMessage | None:
         try:
             return await self.request("GET_REQ", target, command, "", timeout=timeout)
         except asyncio.TimeoutError:
@@ -247,11 +286,11 @@ class LunaUClient:
         arguments: str,
         wait_for_response: bool = False,
         timeout: float = 2.5,
-    ) -> Optional[LunaMessage]:
+    ) -> LunaMessage | None:
         """Set a value on the device."""
+        if wait_for_response:
+            return await self.request("SET_REQ", target, command, arguments, timeout=timeout)
         await self.ensure_connected()
         payload = build_message(self.destination, self.source, "SET_REQ", target, command, arguments)
-        if not wait_for_response:
-            await self._send(payload)
-            return None
-        return await self.request("SET_REQ", target, command, arguments, timeout=timeout)
+        await self._send(payload)
+        return None

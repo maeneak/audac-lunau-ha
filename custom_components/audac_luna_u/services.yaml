@@ -2,6 +2,12 @@ apply_snapshot:
   name: Apply Snapshot
   description: Apply a snapshot by name (without extension).
   fields:
+    device_id:
+      name: Device
+      description: Target specific Luna-U device(s).
+      selector:
+        device:
+          integration: audac_luna_u
     snapshot_name:
       name: Snapshot Name
       description: Snapshot name without path or extension.

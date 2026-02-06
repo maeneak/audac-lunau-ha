@@ -13,20 +13,9 @@ from .const import (
     CONF_GPO_COUNT,
     CONF_GPO_NAMES,
     DATA_COORDINATOR,
-    NAME_DELIMITER,
 )
 from .coordinator import LunaUCoordinator
-
-
-def _split_names(raw: str | None, count: int, prefix: str) -> list[str]:
-    if not raw:
-        return [f"{prefix} {i}" for i in range(1, count + 1)]
-    parts = [p.strip() for p in raw.split(NAME_DELIMITER)]
-    parts = [p for p in parts if p]
-    names = []
-    for i in range(1, count + 1):
-        names.append(parts[i - 1] if i - 1 < len(parts) else f"{prefix} {i}")
-    return names
+from .utils import split_names
 
 
 async def async_setup_entry(
@@ -38,7 +27,7 @@ async def async_setup_entry(
     coordinator: LunaUCoordinator = data[DATA_COORDINATOR]
 
     gpo_count = entry.options.get(CONF_GPO_COUNT, DEFAULT_GPO_COUNT)
-    gpo_names = _split_names(
+    gpo_names = split_names(
         entry.options.get(CONF_GPO_NAMES) or entry.data.get(CONF_GPO_NAMES),
         gpo_count,
         "GPIO",
@@ -59,7 +48,7 @@ async def async_setup_entry(
 class LunaGpoSwitch(CoordinatorEntity[LunaUCoordinator], SwitchEntity):
     """GPIO output as a switch."""
 
-    _attr_should_poll = False
+    _attr_has_entity_name = True
 
     def __init__(
         self,

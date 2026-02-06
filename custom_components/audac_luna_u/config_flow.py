@@ -33,8 +33,12 @@ _LOGGER = logging.getLogger(__name__)
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_HOST): str,
-        vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
-        vol.Optional(CONF_ADDRESS, default=DEFAULT_ADDRESS): int,
+        vol.Optional(CONF_PORT, default=DEFAULT_PORT): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=65535)
+        ),
+        vol.Optional(CONF_ADDRESS, default=DEFAULT_ADDRESS): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=255)
+        ),
         vol.Optional(CONF_ZONE_NAMES, default=""): str,
         vol.Optional(CONF_INPUT_NAMES, default=""): str,
         vol.Optional(CONF_GPO_NAMES, default=""): str,
@@ -54,11 +58,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             port = user_input.get(CONF_PORT, DEFAULT_PORT)
             address = user_input.get(CONF_ADDRESS, DEFAULT_ADDRESS)
 
+            await self.async_set_unique_id(f"{host}_{address}")
+            self._abort_if_unique_id_configured()
+
+            client = LunaUClient(host, port, address)
             try:
-                client = LunaUClient(host, port, address)
                 await client.connect()
-                await client.close()
-            except Exception:  # pragma: no cover - network dependent
+            except Exception:
                 _LOGGER.exception("Failed to connect to Luna-U")
                 errors["base"] = "cannot_connect"
             else:
@@ -66,6 +72,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     title=host,
                     data=user_input,
                 )
+            finally:
+                await client.close()
 
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
@@ -76,14 +84,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     def async_get_options_flow(config_entry: config_entries.ConfigEntry):
-        return OptionsFlowHandler(config_entry)
+        return OptionsFlowHandler()
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
     """Handle options flow."""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         if user_input is not None:
@@ -99,28 +104,28 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                             CONF_ZONES,
                             self.config_entry.data.get(CONF_ZONES, DEFAULT_ZONES),
                         ),
-                    ): vol.Coerce(int),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
                     vol.Optional(
                         CONF_INPUTS,
                         default=self.config_entry.options.get(
                             CONF_INPUTS,
                             self.config_entry.data.get(CONF_INPUTS, DEFAULT_INPUTS),
                         ),
-                    ): vol.Coerce(int),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
                     vol.Optional(
                         CONF_GPO_COUNT,
                         default=self.config_entry.options.get(
                             CONF_GPO_COUNT,
                             self.config_entry.data.get(CONF_GPO_COUNT, DEFAULT_GPO_COUNT),
                         ),
-                    ): vol.Coerce(int),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
                     vol.Optional(
                         CONF_POLL_INTERVAL,
                         default=self.config_entry.options.get(
                             CONF_POLL_INTERVAL,
                             self.config_entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
                         ),
-                    ): vol.Coerce(int),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=300)),
                     vol.Optional(
                         CONF_ZONE_NAMES,
                         default=self.config_entry.options.get(

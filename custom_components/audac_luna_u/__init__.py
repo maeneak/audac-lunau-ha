@@ -9,9 +9,11 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
 import homeassistant.helpers.config_validation as cv
+from homeassistant.helpers import device_registry as dr
 
 from .client import LunaUClient
 from .coordinator import LunaUCoordinator
+from .utils import validate_snapshot_name
 from .const import (
     DOMAIN,
     DEFAULT_PORT,
@@ -39,6 +41,7 @@ ATTR_SNAPSHOT_NAME = "snapshot_name"
 APPLY_SNAPSHOT_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_SNAPSHOT_NAME): cv.string,
+        vol.Optional("device_id"): vol.All(cv.ensure_list, [cv.string]),
     }
 )
 
@@ -71,6 +74,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await coordinator.async_config_entry_first_refresh()
     except Exception as exc:
+        await client.close()
         raise ConfigEntryNotReady(str(exc)) from exc
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
@@ -84,19 +88,44 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Register apply_snapshot service
     async def async_handle_apply_snapshot(call: ServiceCall) -> None:
         """Handle apply_snapshot service call."""
-        snapshot_name = call.data[ATTR_SNAPSHOT_NAME]
-        # Build the snapshot path as expected by the device
-        snapshot_path = f"settings/snapshots/{snapshot_name}.snapshot"
-        _LOGGER.debug("Applying snapshot: %s", snapshot_path)
-        # Send to all configured clients
-        for entry_data in hass.data[DOMAIN].values():
-            client: LunaUClient = entry_data[DATA_CLIENT]
-            await client.set_value(
-                target="SNAPSHOTS>1",
-                command="APPLY_SNAPSHOT",
-                arguments=snapshot_path,
-                wait_for_response=False,
-            )
+        try:
+            snapshot_name = call.data[ATTR_SNAPSHOT_NAME]
+            # Validate and sanitize snapshot name
+            sanitized_name = validate_snapshot_name(snapshot_name)
+            # Build the snapshot path as expected by the device
+            snapshot_path = f"settings/snapshots/{sanitized_name}.snapshot"
+            _LOGGER.debug("Applying snapshot: %s", snapshot_path)
+            
+            targets = []
+            if "device_id" in call.data:
+                target_devices = set(call.data["device_id"])
+                dev_reg = dr.async_get(hass)
+                for device_id in target_devices:
+                    device = dev_reg.async_get(device_id)
+                    if device:
+                        for entry_id in device.config_entries:
+                            if entry_id in hass.data.get(DOMAIN, {}):
+                                targets.append(hass.data[DOMAIN][entry_id][DATA_CLIENT])
+            else:
+                # Send to all configured clients
+                for entry_data in hass.data.get(DOMAIN, {}).values():
+                    targets.append(entry_data[DATA_CLIENT])
+
+            # Send to identified clients
+            for client in targets:
+                try:
+                    await client.set_value(
+                        target="SNAPSHOTS>1",
+                        command="APPLY_SNAPSHOT",
+                        arguments=snapshot_path,
+                        wait_for_response=False,
+                    )
+                except Exception as exc:
+                    _LOGGER.error("Failed to apply snapshot to device: %s", exc)
+        except ValueError as exc:
+            _LOGGER.error("Invalid snapshot name: %s", exc)
+        except Exception as exc:
+            _LOGGER.error("Failed to apply snapshot: %s", exc)
 
     # Only register service once for the domain
     if not hass.services.has_service(DOMAIN, SERVICE_APPLY_SNAPSHOT):
@@ -116,12 +145,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         data = hass.data[DOMAIN].pop(entry.entry_id)
         client: LunaUClient = data[DATA_CLIENT]
         await client.close()
+        
+        # Unregister service if this is the last entry
+        if not hass.data[DOMAIN]:
+            hass.services.async_remove(DOMAIN, SERVICE_APPLY_SNAPSHOT)
     return unload_ok
-
-
-async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    await async_unload_entry(hass, entry)
-    await async_setup_entry(hass, entry)
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:

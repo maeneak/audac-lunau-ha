@@ -20,24 +20,13 @@ from .const import (
     CONF_ZONE_NAMES,
     CONF_ZONES,
     DATA_COORDINATOR,
-    NAME_DELIMITER,
 )
 from .coordinator import LunaUCoordinator
+from .utils import split_names
 
 MIN_DB = -90
 MAX_DB = 0
 VOLUME_STEP = 0.05  # 5% volume step for up/down
-
-
-def _split_names(raw: str | None, count: int, prefix: str) -> list[str]:
-    if not raw:
-        return [f"{prefix} {i}" for i in range(1, count + 1)]
-    parts = [p.strip() for p in raw.split(NAME_DELIMITER)]
-    parts = [p for p in parts if p]
-    names = []
-    for i in range(1, count + 1):
-        names.append(parts[i - 1] if i - 1 < len(parts) else f"{prefix} {i}")
-    return names
 
 
 def _db_to_level(db: int | None) -> float | None:
@@ -63,12 +52,12 @@ async def async_setup_entry(
 
     zone_count = entry.options.get(CONF_ZONES, DEFAULT_ZONES)
     input_count = entry.options.get(CONF_INPUTS, DEFAULT_INPUTS)
-    zone_names = _split_names(
+    zone_names = split_names(
         entry.options.get(CONF_ZONE_NAMES) or entry.data.get(CONF_ZONE_NAMES),
         zone_count,
         "Zone",
     )
-    input_names = _split_names(
+    input_names = split_names(
         entry.options.get(CONF_INPUT_NAMES) or entry.data.get(CONF_INPUT_NAMES),
         input_count,
         "Input",
@@ -90,7 +79,7 @@ async def async_setup_entry(
 class LunaZoneMediaPlayer(CoordinatorEntity[LunaUCoordinator], MediaPlayerEntity):
     """Representation of a Luna-U zone."""
 
-    _attr_should_poll = False
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -124,6 +113,13 @@ class LunaZoneMediaPlayer(CoordinatorEntity[LunaUCoordinator], MediaPlayerEntity
         )
 
     @property
+    def _zone_state(self) -> dict:
+        """Return the current zone state dict."""
+        if not self.coordinator.data:
+            return {}
+        return self.coordinator.data.get("zones", {}).get(self._zone, {})
+
+    @property
     def supported_features(self) -> MediaPlayerEntityFeature:
         """Return the supported features."""
         return (
@@ -142,35 +138,32 @@ class LunaZoneMediaPlayer(CoordinatorEntity[LunaUCoordinator], MediaPlayerEntity
     @property
     def state(self) -> MediaPlayerState:
         """Return the state of the zone."""
-        if not self.coordinator.data:
-            return MediaPlayerState.IDLE
-        zone_state = self.coordinator.data.get("zones", {}).get(self._zone, {})
+        zone_state = self._zone_state
         muted = zone_state.get("mute")
         route = zone_state.get("route")
-        # If muted or no source selected, show as idle
+        # If missing data, muted, or no source selected, show as idle
+        if muted is None or route is None:
+            return MediaPlayerState.IDLE
         if muted or route == 0:
             return MediaPlayerState.IDLE
         return MediaPlayerState.PLAYING
 
     @property
     def volume_level(self) -> float | None:
-        state = self.coordinator.data.get("zones", {}).get(self._zone, {}) if self.coordinator.data else {}
-        return _db_to_level(state.get("volume_db"))
+        return _db_to_level(self._zone_state.get("volume_db"))
 
     @property
     def is_volume_muted(self) -> bool | None:
-        state = self.coordinator.data.get("zones", {}).get(self._zone, {}) if self.coordinator.data else {}
-        return state.get("mute")
+        return self._zone_state.get("mute")
 
     @property
     def source_list(self) -> list[str]:
-        return ["Off", "Mixed"] + self._input_names
+        return ["Off"] + self._input_names
 
     @property
     def source(self) -> str | None:
         """Return the current source."""
-        state = self.coordinator.data.get("zones", {}).get(self._zone, {}) if self.coordinator.data else {}
-        route = state.get("route")
+        route = self._zone_state.get("route")
         if route is None:
             return None
         if route == -1:
@@ -204,9 +197,6 @@ class LunaZoneMediaPlayer(CoordinatorEntity[LunaUCoordinator], MediaPlayerEntity
         """Select input source."""
         if source == "Off":
             route = 0
-        elif source == "Mixed":
-            # Mixed mode cannot be set directly
-            return
         else:
             try:
                 route = self._input_names.index(source) + 1
