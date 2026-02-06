@@ -1,0 +1,40 @@
+{
+  "title": "Audac Luna-U",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Luna-U",
+        "description": "Enter connection details for your Luna-U device.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "address": "Device address",
+          "zone_names": "Zone names (comma-separated)",
+          "input_names": "Input names (comma-separated)",
+          "gpo_names": "GPIO names (comma-separated)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect. Check host/port."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Luna-U Options",
+        "description": "Set zone/input counts and optional custom names (comma-separated).",
+        "data": {
+          "zones": "Zones",
+          "inputs": "Inputs",
+          "gpo_count": "GPIO outputs",
+          "poll_interval": "Poll interval (seconds)",
+          "zone_names": "Zone names (comma-separated)",
+          "input_names": "Input names (comma-separated)",
+          "gpo_names": "GPIO names (comma-separated)"
+        }
+      }
+    }
+  }
+}
+

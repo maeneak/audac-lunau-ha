@@ -1,0 +1,10 @@
+{
+  "domain": "audac_luna_u",
+  "name": "Audac Luna-U",
+  "version": "0.1.0",
+  "config_flow": true,
+  "documentation": "https://www.audac.eu",
+  "requirements": [],
+  "codeowners": [],
+  "iot_class": "local_polling"
+}
