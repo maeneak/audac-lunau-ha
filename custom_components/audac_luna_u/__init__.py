@@ -48,13 +48,13 @@ APPLY_SNAPSHOT_SCHEMA = vol.Schema(
 
 
 def _cleanup_legacy_naming_keys(options: dict) -> dict:
-    """Remove legacy zone/GPIO name keys from options (pre-v2 config format).
+    """Remove legacy zone/GPIO name keys from options.
 
-    Before v2, zones and GPIOs were named during config flow and stored as:
+    In older versions, zones and GPIOs were named during config flow and stored as:
     'Zone 1', 'Zone 2', 'GPIO 1', 'GPIO 2', etc.
 
     Now these are device names that users can rename in the UI.
-    This migration removes the old keys to prevent config bloat.
+    This function removes the old keys to prevent config bloat.
     """
     pattern = re.compile(r"^(Zone|GPIO) \d+$")
     cleaned = {k: v for k, v in options.items() if not pattern.match(k)}
@@ -73,7 +73,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     port = entry.data.get(CONF_PORT, DEFAULT_PORT)
     address = entry.data.get(CONF_ADDRESS, DEFAULT_ADDRESS)
 
-    # Migrate from v1 config format: remove legacy zone/GPIO naming keys
+    # Clean up legacy zone/GPIO naming keys from older installations
     if entry.options:
         cleaned_options = _cleanup_legacy_naming_keys(dict(entry.options))
         if cleaned_options != entry.options:
