@@ -59,16 +59,16 @@ class LunaGpoSwitch(CoordinatorEntity[LunaUCoordinator], SwitchEntity):
     @property
     def name(self) -> str:
         """Name of the entity within the device."""
-        return "Switch"
+        return f"GPIO {self._gpo}"
 
     @property
     def device_info(self) -> DeviceInfo:
-        """Return device info for this GPIO."""
+        """Return device info - all GPIOs share a single device."""
         return DeviceInfo(
-            identifiers={(DOMAIN, f"{self._entry_id}_gpo_{self._gpo}")},
-            name=f"GPIO {self._gpo}",
+            identifiers={(DOMAIN, f"{self._entry_id}_gpios")},
+            name="GPIO Outputs",
             manufacturer="Audac",
-            model="Luna-U GPIO",
+            model="Luna-U GPIOs",
             via_device=(DOMAIN, self._entry_id),
         )
 

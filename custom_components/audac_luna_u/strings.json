@@ -19,8 +19,8 @@
   "options": {
     "step": {
       "init": {
-        "title": "Luna-U Configuration",
-        "description": "Configure zone, input, and GPIO counts. Zones and GPIOs will be created as individual devices that you can rename in Home Assistant.",
+        "title": "Luna-U Configuration (Step 1 of 2)",
+        "description": "Configure zone, input, and GPIO counts. Each zone will be created as a separate device. All GPIOs will be grouped under a single 'GPIO Outputs' device.\n\nClick Submit to continue to input naming.",
         "data": {
           "zones": "Number of zones",
           "inputs": "Number of inputs",
@@ -29,7 +29,7 @@
         }
       },
       "input_names": {
-        "title": "Input Names",
+        "title": "Input Names (Step 2 of 2)",
         "description": "Name your inputs. These names will appear as source options when selecting inputs for zones."
       }
     }

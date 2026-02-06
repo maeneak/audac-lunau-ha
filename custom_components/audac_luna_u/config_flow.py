@@ -8,6 +8,7 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT
+from homeassistant.helpers import selector
 
 from .client import LunaUClient
 from .const import (
@@ -18,6 +19,9 @@ from .const import (
     DEFAULT_INPUTS,
     DEFAULT_GPO_COUNT,
     DEFAULT_POLL_INTERVAL,
+    MAX_ZONES,
+    MAX_INPUTS,
+    MAX_GPO_COUNT,
     CONF_ADDRESS,
     CONF_ZONES,
     CONF_INPUTS,
@@ -102,22 +106,38 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             step_id="init",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(
+                    vol.Required(
                         CONF_ZONES,
                         default=current.get(CONF_ZONES, DEFAULT_ZONES),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
-                    vol.Optional(
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=1, max=MAX_ZONES, mode=selector.NumberSelectorMode.BOX
+                        )
+                    ),
+                    vol.Required(
                         CONF_INPUTS,
                         default=current.get(CONF_INPUTS, DEFAULT_INPUTS),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
-                    vol.Optional(
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=1, max=MAX_INPUTS, mode=selector.NumberSelectorMode.BOX
+                        )
+                    ),
+                    vol.Required(
                         CONF_GPO_COUNT,
                         default=current.get(CONF_GPO_COUNT, DEFAULT_GPO_COUNT),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=64)),
-                    vol.Optional(
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=1, max=MAX_GPO_COUNT, mode=selector.NumberSelectorMode.BOX
+                        )
+                    ),
+                    vol.Required(
                         CONF_POLL_INTERVAL,
                         default=current.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=300)),
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=1, max=300, mode=selector.NumberSelectorMode.BOX, unit_of_measurement="seconds"
+                        )
+                    ),
                 }
             ),
         )

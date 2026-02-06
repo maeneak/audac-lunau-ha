@@ -10,6 +10,11 @@ DEFAULT_INPUTS = 8
 DEFAULT_GPO_COUNT = 12
 DEFAULT_POLL_INTERVAL = 10  # seconds
 
+# Maximum hardware limits
+MAX_ZONES = 32
+MAX_INPUTS = 12
+MAX_GPO_COUNT = 12
+
 CONF_ADDRESS = "address"
 CONF_ZONES = "zones"
 CONF_INPUTS = "inputs"
