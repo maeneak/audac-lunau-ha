@@ -221,9 +221,17 @@ class LunaUClient:
         await self.ensure_connected()
         payload = build_message(self.destination, self.source, msg_type, target, command, arguments)
         fut = asyncio.get_running_loop().create_future()
-        self._pending.append(("GET_RSP", target, command, fut))
-        await self._send(payload)
-        return await asyncio.wait_for(fut, timeout=timeout)
+        pending = ("GET_RSP", target, command, fut)
+        self._pending.append(pending)
+        try:
+            await self._send(payload)
+            return await asyncio.wait_for(fut, timeout=timeout)
+        except Exception:
+            if pending in self._pending:
+                self._pending.remove(pending)
+            if not fut.done():
+                fut.cancel()
+            raise
 
     async def get_value(self, target: str, command: str, timeout: float = 2.5) -> Optional[LunaMessage]:
         try:

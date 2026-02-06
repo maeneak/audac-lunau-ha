@@ -95,33 +95,52 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 {
                     vol.Optional(
                         CONF_ZONES,
-                        default=self.config_entry.options.get(CONF_ZONES, DEFAULT_ZONES),
+                        default=self.config_entry.options.get(
+                            CONF_ZONES,
+                            self.config_entry.data.get(CONF_ZONES, DEFAULT_ZONES),
+                        ),
                     ): vol.Coerce(int),
                     vol.Optional(
                         CONF_INPUTS,
-                        default=self.config_entry.options.get(CONF_INPUTS, DEFAULT_INPUTS),
+                        default=self.config_entry.options.get(
+                            CONF_INPUTS,
+                            self.config_entry.data.get(CONF_INPUTS, DEFAULT_INPUTS),
+                        ),
                     ): vol.Coerce(int),
                     vol.Optional(
                         CONF_GPO_COUNT,
-                        default=self.config_entry.options.get(CONF_GPO_COUNT, DEFAULT_GPO_COUNT),
+                        default=self.config_entry.options.get(
+                            CONF_GPO_COUNT,
+                            self.config_entry.data.get(CONF_GPO_COUNT, DEFAULT_GPO_COUNT),
+                        ),
                     ): vol.Coerce(int),
                     vol.Optional(
                         CONF_POLL_INTERVAL,
                         default=self.config_entry.options.get(
-                            CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL
+                            CONF_POLL_INTERVAL,
+                            self.config_entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL),
                         ),
                     ): vol.Coerce(int),
                     vol.Optional(
                         CONF_ZONE_NAMES,
-                        default=self.config_entry.options.get(CONF_ZONE_NAMES, ""),
+                        default=self.config_entry.options.get(
+                            CONF_ZONE_NAMES,
+                            self.config_entry.data.get(CONF_ZONE_NAMES, ""),
+                        ),
                     ): str,
                     vol.Optional(
                         CONF_INPUT_NAMES,
-                        default=self.config_entry.options.get(CONF_INPUT_NAMES, ""),
+                        default=self.config_entry.options.get(
+                            CONF_INPUT_NAMES,
+                            self.config_entry.data.get(CONF_INPUT_NAMES, ""),
+                        ),
                     ): str,
                     vol.Optional(
                         CONF_GPO_NAMES,
-                        default=self.config_entry.options.get(CONF_GPO_NAMES, ""),
+                        default=self.config_entry.options.get(
+                            CONF_GPO_NAMES,
+                            self.config_entry.data.get(CONF_GPO_NAMES, ""),
+                        ),
                     ): str,
                 }
             ),

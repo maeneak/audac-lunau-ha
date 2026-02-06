@@ -17,7 +17,7 @@ The Luna-U uses an ASCII command protocol over TCP. This integration connects vi
 
 **Installation (HACS)**
 1. In HACS, add a custom repository:
-   - Repository: `https://github.com/<your-org-or-user>/audac-lunau-ha`
+   - Repository: `https://github.com/maeneak/audac-lunau-ha`
    - Category: Integration
 2. Install **Audac Luna-U**.
 3. Restart Home Assistant.

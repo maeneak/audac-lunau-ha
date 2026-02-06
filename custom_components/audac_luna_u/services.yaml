@@ -1,0 +1,11 @@
+apply_snapshot:
+  name: Apply Snapshot
+  description: Apply a snapshot by name (without extension).
+  fields:
+    snapshot_name:
+      name: Snapshot Name
+      description: Snapshot name without path or extension.
+      example: Lobby Day
+      required: true
+      selector:
+        text:

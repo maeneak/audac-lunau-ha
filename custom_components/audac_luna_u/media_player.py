@@ -136,6 +136,10 @@ class LunaZoneMediaPlayer(CoordinatorEntity[LunaUCoordinator], MediaPlayerEntity
         )
 
     @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success
+
+    @property
     def state(self) -> MediaPlayerState:
         """Return the state of the zone."""
         if not self.coordinator.data:
@@ -160,7 +164,7 @@ class LunaZoneMediaPlayer(CoordinatorEntity[LunaUCoordinator], MediaPlayerEntity
 
     @property
     def source_list(self) -> list[str]:
-        return ["Off"] + self._input_names
+        return ["Off", "Mixed"] + self._input_names
 
     @property
     def source(self) -> str | None:

@@ -95,6 +95,10 @@ class LunaGpoSwitch(CoordinatorEntity[LunaUCoordinator], SwitchEntity):
         state = self.coordinator.data.get("gpos", {}).get(self._gpo, {}) if self.coordinator.data else {}
         return state.get("enabled")
 
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success
+
     async def async_turn_on(self, **kwargs) -> None:
         await self.coordinator.client.set_value(
             target=f"GPO>{self._gpo}>GPO_TRIGGER>1",
