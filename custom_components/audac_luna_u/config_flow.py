@@ -97,7 +97,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             self._options = dict(user_input)
             # If there are inputs, show the naming step, otherwise save immediately
-            if self._options.get(CONF_INPUTS, DEFAULT_INPUTS) > 0:
+            if int(self._options.get(CONF_INPUTS, DEFAULT_INPUTS)) > 0:
                 return await self.async_step_input_names()
             return self.async_create_entry(title="", data=self._options)
 
@@ -148,7 +148,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             self._options.update(user_input)
             return self.async_create_entry(title="", data=self._options)
 
-        input_count = self._options.get(CONF_INPUTS, DEFAULT_INPUTS)
+        input_count = int(self._options.get(CONF_INPUTS, DEFAULT_INPUTS))
         current = {**self.config_entry.data, **self.config_entry.options}
         schema: dict = {}
         for i in range(1, input_count + 1):
