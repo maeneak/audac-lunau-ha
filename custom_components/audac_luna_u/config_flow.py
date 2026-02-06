@@ -43,7 +43,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Audac Luna-U."""
 
-    VERSION = 1
+    VERSION = 2
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
         errors = {}
@@ -82,17 +82,20 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options flow with per-entity name configuration."""
+    """Handle options flow for counts, poll interval, and input names."""
 
     def __init__(self) -> None:
-        """Initialise mutable state for the multi-step flow."""
+        """Initialize the options flow."""
         self._options: dict[str, Any] = {}
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         """Step 1: Configure counts and poll interval."""
         if user_input is not None:
             self._options = dict(user_input)
-            return await self.async_step_zone_names()
+            # If there are inputs, show the naming step, otherwise save immediately
+            if self._options.get(CONF_INPUTS, DEFAULT_INPUTS) > 0:
+                return await self.async_step_input_names()
+            return self.async_create_entry(title="", data=self._options)
 
         current = {**self.config_entry.data, **self.config_entry.options}
         return self.async_show_form(
@@ -119,29 +122,11 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             ),
         )
 
-    async def async_step_zone_names(self, user_input: dict[str, Any] | None = None):
-        """Step 2: Name each zone."""
-        if user_input is not None:
-            self._options.update(user_input)
-            return await self.async_step_input_names()
-
-        zone_count = self._options.get(CONF_ZONES, DEFAULT_ZONES)
-        current = {**self.config_entry.data, **self.config_entry.options}
-        schema: dict = {}
-        for i in range(1, zone_count + 1):
-            key = f"Zone {i}"
-            schema[vol.Optional(key, default=current.get(key, key))] = str
-
-        return self.async_show_form(
-            step_id="zone_names",
-            data_schema=vol.Schema(schema),
-        )
-
     async def async_step_input_names(self, user_input: dict[str, Any] | None = None):
-        """Step 3: Name each input."""
+        """Step 2: Name each input."""
         if user_input is not None:
             self._options.update(user_input)
-            return await self.async_step_gpo_names()
+            return self.async_create_entry(title="", data=self._options)
 
         input_count = self._options.get(CONF_INPUTS, DEFAULT_INPUTS)
         current = {**self.config_entry.data, **self.config_entry.options}
@@ -154,38 +139,3 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             step_id="input_names",
             data_schema=vol.Schema(schema),
         )
-
-    async def async_step_gpo_names(self, user_input: dict[str, Any] | None = None):
-        """Step 4: Name each GPIO output."""
-        if user_input is not None:
-            self._options.update(user_input)
-            # Strip orphaned name keys from previous higher counts
-            self._prune_stale_name_keys()
-            return self.async_create_entry(title="", data=self._options)
-
-        gpo_count = self._options.get(CONF_GPO_COUNT, DEFAULT_GPO_COUNT)
-        current = {**self.config_entry.data, **self.config_entry.options}
-        schema: dict = {}
-        for i in range(1, gpo_count + 1):
-            key = f"GPIO {i}"
-            schema[vol.Optional(key, default=current.get(key, key))] = str
-
-        return self.async_show_form(
-            step_id="gpo_names",
-            data_schema=vol.Schema(schema),
-        )
-
-    def _prune_stale_name_keys(self) -> None:
-        """Remove name keys that exceed the current counts."""
-        import re
-
-        limits = {"Zone": self._options.get(CONF_ZONES, DEFAULT_ZONES),
-                  "Input": self._options.get(CONF_INPUTS, DEFAULT_INPUTS),
-                  "GPIO": self._options.get(CONF_GPO_COUNT, DEFAULT_GPO_COUNT)}
-        pattern = re.compile(r"^(Zone|Input|GPIO) (\d+)$")
-        stale = [
-            k for k in self._options
-            if (m := pattern.match(k)) and int(m.group(2)) > limits.get(m.group(1), 0)
-        ]
-        for k in stale:
-            del self._options[k]

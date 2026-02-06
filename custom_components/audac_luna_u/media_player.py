@@ -20,7 +20,6 @@ from .const import (
     DATA_COORDINATOR,
 )
 from .coordinator import LunaUCoordinator
-from .utils import get_entity_names
 
 MIN_DB = -90
 MAX_DB = 0
@@ -40,6 +39,14 @@ def _level_to_db(level: float) -> int:
     return int(round(db))
 
 
+def _get_input_names(config: dict, count: int) -> list[str]:
+    """Get input names from config."""
+    return [
+        config.get(f"Input {i}", f"Input {i}")
+        for i in range(1, count + 1)
+    ]
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -50,15 +57,13 @@ async def async_setup_entry(
 
     zone_count = entry.options.get(CONF_ZONES, DEFAULT_ZONES)
     input_count = entry.options.get(CONF_INPUTS, DEFAULT_INPUTS)
-    zone_names = get_entity_names(entry.options, zone_count, "Zone")
-    input_names = get_entity_names(entry.options, input_count, "Input")
+    input_names = _get_input_names(entry.options, input_count)
 
     entities = [
         LunaZoneMediaPlayer(
             coordinator=coordinator,
             entry_id=entry.entry_id,
             zone_index=i + 1,
-            zone_name=zone_names[i],
             input_names=input_names,
         )
         for i in range(zone_count)
@@ -76,13 +81,11 @@ class LunaZoneMediaPlayer(CoordinatorEntity[LunaUCoordinator], MediaPlayerEntity
         coordinator: LunaUCoordinator,
         entry_id: str,
         zone_index: int,
-        zone_name: str,
         input_names: list[str],
     ) -> None:
         super().__init__(coordinator)
         self._entry_id = entry_id
         self._zone = zone_index
-        self._name = zone_name
         self._input_names = input_names
 
     @property
@@ -91,15 +94,18 @@ class LunaZoneMediaPlayer(CoordinatorEntity[LunaUCoordinator], MediaPlayerEntity
 
     @property
     def name(self) -> str:
-        return self._name
+        """Name of the entity within the device."""
+        return "Media Player"
 
     @property
     def device_info(self) -> DeviceInfo:
+        """Return device info for this zone."""
         return DeviceInfo(
-            identifiers={(DOMAIN, self._entry_id)},
-            name="Audac Luna-U",
+            identifiers={(DOMAIN, f"{self._entry_id}_zone_{self._zone}")},
+            name=f"Zone {self._zone}",
             manufacturer="Audac",
-            model="Luna-U",
+            model="Luna-U Zone",
+            via_device=(DOMAIN, self._entry_id),
         )
 
     @property

@@ -14,7 +14,6 @@ from .const import (
     DATA_COORDINATOR,
 )
 from .coordinator import LunaUCoordinator
-from .utils import get_entity_names
 
 
 async def async_setup_entry(
@@ -26,14 +25,12 @@ async def async_setup_entry(
     coordinator: LunaUCoordinator = data[DATA_COORDINATOR]
 
     gpo_count = entry.options.get(CONF_GPO_COUNT, DEFAULT_GPO_COUNT)
-    gpo_names = get_entity_names(entry.options, gpo_count, "GPIO")
 
     entities = [
         LunaGpoSwitch(
             coordinator=coordinator,
             entry_id=entry.entry_id,
             gpo_index=i + 1,
-            gpo_name=gpo_names[i],
         )
         for i in range(gpo_count)
     ]
@@ -50,12 +47,10 @@ class LunaGpoSwitch(CoordinatorEntity[LunaUCoordinator], SwitchEntity):
         coordinator: LunaUCoordinator,
         entry_id: str,
         gpo_index: int,
-        gpo_name: str,
     ) -> None:
         super().__init__(coordinator)
         self._entry_id = entry_id
         self._gpo = gpo_index
-        self._name = gpo_name
 
     @property
     def unique_id(self) -> str:
@@ -63,15 +58,18 @@ class LunaGpoSwitch(CoordinatorEntity[LunaUCoordinator], SwitchEntity):
 
     @property
     def name(self) -> str:
-        return self._name
+        """Name of the entity within the device."""
+        return "Switch"
 
     @property
     def device_info(self) -> DeviceInfo:
+        """Return device info for this GPIO."""
         return DeviceInfo(
-            identifiers={(DOMAIN, self._entry_id)},
-            name="Audac Luna-U",
+            identifiers={(DOMAIN, f"{self._entry_id}_gpo_{self._gpo}")},
+            name=f"GPIO {self._gpo}",
             manufacturer="Audac",
-            model="Luna-U",
+            model="Luna-U GPIO",
+            via_device=(DOMAIN, self._entry_id),
         )
 
     @property

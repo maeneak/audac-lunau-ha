@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
@@ -46,10 +47,37 @@ APPLY_SNAPSHOT_SCHEMA = vol.Schema(
 )
 
 
+def _cleanup_legacy_naming_keys(options: dict) -> dict:
+    """Remove legacy zone/GPIO name keys from options (pre-v2 config format).
+
+    Before v2, zones and GPIOs were named during config flow and stored as:
+    'Zone 1', 'Zone 2', 'GPIO 1', 'GPIO 2', etc.
+
+    Now these are device names that users can rename in the UI.
+    This migration removes the old keys to prevent config bloat.
+    """
+    pattern = re.compile(r"^(Zone|GPIO) \d+$")
+    cleaned = {k: v for k, v in options.items() if not pattern.match(k)}
+
+    if len(cleaned) != len(options):
+        _LOGGER.info(
+            "Migrated config: removed %d legacy naming keys",
+            len(options) - len(cleaned)
+        )
+
+    return cleaned
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     host = entry.data[CONF_HOST]
     port = entry.data.get(CONF_PORT, DEFAULT_PORT)
     address = entry.data.get(CONF_ADDRESS, DEFAULT_ADDRESS)
+
+    # Migrate from v1 config format: remove legacy zone/GPIO naming keys
+    if entry.options:
+        cleaned_options = _cleanup_legacy_naming_keys(dict(entry.options))
+        if cleaned_options != entry.options:
+            hass.config_entries.async_update_entry(entry, options=cleaned_options)
 
     zone_count = entry.options.get(CONF_ZONES, DEFAULT_ZONES)
     input_count = entry.options.get(CONF_INPUTS, DEFAULT_INPUTS)
@@ -81,6 +109,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         DATA_CLIENT: client,
         DATA_COORDINATOR: coordinator,
     }
+
+    # Register the main Luna-U controller device
+    device_registry = dr.async_get(hass)
+    device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, entry.entry_id)},
+        name="Audac Luna-U",
+        manufacturer="Audac",
+        model="Luna-U",
+        configuration_url=f"http://{host}:{port}",
+    )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))

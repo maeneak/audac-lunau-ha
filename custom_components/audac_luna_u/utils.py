@@ -4,17 +4,6 @@ from __future__ import annotations
 import re
 
 
-def get_entity_names(config: dict, count: int, prefix: str) -> list[str]:
-    """Get entity names from config options, falling back to defaults.
-
-    Keys are expected as '{prefix} 1', '{prefix} 2', etc.
-    """
-    return [
-        config.get(f"{prefix} {i}", f"{prefix} {i}")
-        for i in range(1, count + 1)
-    ]
-
-
 def parse_bool(value: str | None) -> bool | None:
     """Parse boolean value from Luna-U response."""
     if value is None:
