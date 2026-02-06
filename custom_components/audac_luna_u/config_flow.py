@@ -37,9 +37,6 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Optional(CONF_PORT, default=DEFAULT_PORT): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=65535)
         ),
-        vol.Optional(CONF_ADDRESS, default=DEFAULT_ADDRESS): vol.All(
-            vol.Coerce(int), vol.Range(min=1, max=255)
-        ),
     }
 )
 
