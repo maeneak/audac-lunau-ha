@@ -80,6 +80,49 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_import(self, user_input: dict[str, Any]):
         return await self.async_step_user(user_input)
 
+    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None):
+        """Handle reconfiguration of the integration."""
+        errors = {}
+
+        if user_input is not None:
+            host = user_input[CONF_HOST]
+            port = user_input.get(CONF_PORT, DEFAULT_PORT)
+            address = user_input.get(CONF_ADDRESS, DEFAULT_ADDRESS)
+
+            # Test the new connection
+            client = LunaUClient(host, port, address)
+            try:
+                await client.connect()
+            except Exception:
+                _LOGGER.exception("Failed to connect to Luna-U")
+                errors["base"] = "cannot_connect"
+            else:
+                # Update the config entry with new values
+                return self.async_update_reload_and_abort(
+                    self._get_reconfigure_entry(),
+                    data=user_input,
+                )
+            finally:
+                await client.close()
+
+        # Show form with current values
+        current = self._get_reconfigure_entry().data
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_HOST, default=current.get(CONF_HOST)): str,
+                    vol.Optional(CONF_PORT, default=current.get(CONF_PORT, DEFAULT_PORT)): vol.All(
+                        vol.Coerce(int), vol.Range(min=1, max=65535)
+                    ),
+                    vol.Optional(CONF_ADDRESS, default=current.get(CONF_ADDRESS, DEFAULT_ADDRESS)): vol.All(
+                        vol.Coerce(int), vol.Range(min=1, max=255)
+                    ),
+                }
+            ),
+            errors=errors,
+        )
+
     @staticmethod
     def async_get_options_flow(config_entry: config_entries.ConfigEntry):
         return OptionsFlowHandler()
