@@ -183,16 +183,21 @@ class LunaUClient:
             await self._close_unlocked()
 
     async def _reader_loop(self) -> None:
+        _LOGGER.debug("Reader loop started")
         try:
             if self._reader is None:
+                _LOGGER.warning("Reader loop started but reader is None")
                 return
             while True:
                 line = await self._reader.readline()
                 if not line:
                     _LOGGER.debug("Reader received empty line, connection closed")
                     break
+                # Log raw hex bytes for debugging
+                hex_data = line.hex()
+                _LOGGER.debug("Raw RX (hex): %s", hex_data[:200])  # First 200 chars of hex
                 raw_data = line.decode(errors="ignore").strip()
-                _LOGGER.debug("Raw RX: %s", raw_data)
+                _LOGGER.debug("Raw RX (text): %s", raw_data[:200])  # First 200 chars of text
                 try:
                     msg = parse_message(raw_data)
                 except Exception as exc:  # pragma: no cover - defensive
