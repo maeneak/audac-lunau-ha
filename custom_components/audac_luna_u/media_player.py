@@ -26,7 +26,7 @@ MAX_DB = 0
 VOLUME_STEP = 0.05  # 5% volume step for up/down
 
 
-def _db_to_level(db: int | None) -> float | None:
+def _db_to_level(db: float | None) -> float | None:
     if db is None:
         return None
     db = max(MIN_DB, min(MAX_DB, db))

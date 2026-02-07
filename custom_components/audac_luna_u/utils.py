@@ -26,6 +26,16 @@ def parse_int(value: str | None) -> int | None:
         return None
 
 
+def parse_float(value: str | None) -> float | None:
+    """Parse float value from Luna-U response."""
+    if value is None:
+        return None
+    try:
+        return float(value.strip())
+    except ValueError:
+        return None
+
+
 def validate_snapshot_name(name: str) -> str:
     """Validate and sanitize snapshot name."""
     # Remove any path separators and restrict to safe characters

@@ -12,7 +12,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .client import LunaUClient
 from .const import DEFAULT_POLL_INTERVAL
-from .utils import parse_bool, parse_int
+from .utils import parse_bool, parse_float, parse_int
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ class LunaUCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
                 if entity_type == "zone":
                     if field == "volume_db":
-                        parsed = parse_int(result.arguments)
+                        parsed = parse_float(result.arguments)
                         _LOGGER.debug("Zone %d volume: raw=%s parsed=%s", entity_id, result.arguments, parsed)
                         zones[entity_id][field] = parsed
                     elif field == "mute":

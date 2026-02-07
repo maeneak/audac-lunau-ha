@@ -37,8 +37,10 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Optional(CONF_PORT, default=DEFAULT_PORT): vol.All(
             vol.Coerce(int), vol.Range(min=1, max=65535)
         ),
-        vol.Optional(CONF_ADDRESS, default=DEFAULT_ADDRESS): vol.All(
-            vol.Coerce(int), vol.Range(min=1, max=255)
+        vol.Optional(CONF_ADDRESS, default=DEFAULT_ADDRESS): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=1, max=255, mode=selector.NumberSelectorMode.BOX
+            )
         ),
     }
 )
@@ -115,8 +117,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     vol.Optional(CONF_PORT, default=current.get(CONF_PORT, DEFAULT_PORT)): vol.All(
                         vol.Coerce(int), vol.Range(min=1, max=65535)
                     ),
-                    vol.Optional(CONF_ADDRESS, default=current.get(CONF_ADDRESS, DEFAULT_ADDRESS)): vol.All(
-                        vol.Coerce(int), vol.Range(min=1, max=255)
+                    vol.Optional(CONF_ADDRESS, default=current.get(CONF_ADDRESS, DEFAULT_ADDRESS)): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=1, max=255, mode=selector.NumberSelectorMode.BOX
+                        )
                     ),
                 }
             ),

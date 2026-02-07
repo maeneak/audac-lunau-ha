@@ -198,6 +198,16 @@ class LunaUClient:
                 _LOGGER.debug("Raw RX (hex): %s", hex_data[:200])  # First 200 chars of hex
                 raw_data = line.decode(errors="ignore").strip()
                 _LOGGER.debug("Raw RX (text): %s", raw_data[:200])  # First 200 chars of text
+                # Device may prepend binary status packets (no \r\n terminator)
+                # that get concatenated with text protocol messages by readline().
+                # Strip everything before the #| protocol marker.
+                marker = raw_data.find("#|")
+                if marker < 0:
+                    _LOGGER.debug("No protocol marker found, skipping binary data")
+                    continue
+                if marker > 0:
+                    _LOGGER.debug("Stripped %d chars of binary prefix", marker)
+                    raw_data = raw_data[marker:]
                 try:
                     msg = parse_message(raw_data)
                 except Exception as exc:  # pragma: no cover - defensive
