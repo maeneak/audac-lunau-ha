@@ -87,18 +87,31 @@ class LunaUCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if isinstance(result, Exception):
                     _LOGGER.debug("Query failed for %s %s %s: %s", entity_type, entity_id, field, result)
                     continue
-                    
+
+                if result is None:
+                    _LOGGER.debug("No response for %s %s %s (likely timeout)", entity_type, entity_id, field)
+                    continue
+
                 if entity_type == "zone":
                     if field == "volume_db":
-                        zones[entity_id][field] = parse_int(result.arguments) if result else None
+                        parsed = parse_int(result.arguments)
+                        _LOGGER.debug("Zone %d volume: raw=%s parsed=%s", entity_id, result.arguments, parsed)
+                        zones[entity_id][field] = parsed
                     elif field == "mute":
-                        zones[entity_id][field] = parse_bool(result.arguments) if result else None
+                        parsed = parse_bool(result.arguments)
+                        _LOGGER.debug("Zone %d mute: raw=%s parsed=%s", entity_id, result.arguments, parsed)
+                        zones[entity_id][field] = parsed
                     elif field == "route":
-                        zones[entity_id][field] = parse_int(result.arguments) if result else None
+                        parsed = parse_int(result.arguments)
+                        _LOGGER.debug("Zone %d route: raw=%s parsed=%s", entity_id, result.arguments, parsed)
+                        zones[entity_id][field] = parsed
                 elif entity_type == "gpo":
                     if field == "enabled":
-                        gpos[entity_id][field] = parse_bool(result.arguments) if result else None
+                        parsed = parse_bool(result.arguments)
+                        _LOGGER.debug("GPO %d enabled: raw=%s parsed=%s", entity_id, result.arguments, parsed)
+                        gpos[entity_id][field] = parsed
 
+            _LOGGER.debug("Coordinator update complete: zones=%s gpos=%s", zones, gpos)
             return {"zones": zones, "gpos": gpos}
         except Exception as exc:
             raise UpdateFailed(str(exc)) from exc
