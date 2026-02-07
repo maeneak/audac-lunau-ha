@@ -1,7 +1,6 @@
 """Coordinator for polling Luna-U state."""
 from __future__ import annotations
 
-import asyncio
 import copy
 from datetime import timedelta
 import logging
@@ -39,77 +38,53 @@ class LunaUCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.zone_count = zone_count
         self.input_count = input_count
         self.gpo_count = gpo_count
-        # Limit concurrent requests to avoid overflowing the client queue or device
-        self._semaphore = asyncio.Semaphore(10)
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
-            # Short-circuit if the client is disconnected to avoid flooding
             if not self.client.connected:
                 try:
                     await self.client.ensure_connected()
                 except ConnectionError as exc:
                     raise UpdateFailed(f"Device unreachable: {exc}") from exc
 
-            # Build all query tasks for parallel execution
-            tasks = []
-            task_map = []  # Track what each task is for
-            
-            async def _throttled_get_value(target: str, command: str) -> Any:
-                async with self._semaphore:
-                    return await self.client.get_value(target, command)
-
-            # Zone queries
-            for zone in range(1, self.zone_count + 1):
-                tasks.append(_throttled_get_value(f"ZONE>{zone}>VOLUME>1", "VOLUME"))
-                task_map.append(("zone", zone, "volume_db"))
-                
-                tasks.append(_throttled_get_value(f"ZONE>{zone}>VOLUME>1", "MUTE"))
-                task_map.append(("zone", zone, "mute"))
-                
-                tasks.append(_throttled_get_value(f"ZONE>{zone}>MIXER>1", "ROUTE"))
-                task_map.append(("zone", zone, "route"))
-            
-            # GPO queries
-            for gpo in range(1, self.gpo_count + 1):
-                tasks.append(_throttled_get_value(f"GPO>{gpo}>GPO_TRIGGER>1", "GPO_ENABLE"))
-                task_map.append(("gpo", gpo, "enabled"))
-
-            
-            # Execute all queries in parallel
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Parse results
             zones: dict[int, dict[str, Any]] = {i: {} for i in range(1, self.zone_count + 1)}
             gpos: dict[int, dict[str, Any]] = {i: {} for i in range(1, self.gpo_count + 1)}
-            
-            for result, (entity_type, entity_id, field) in zip(results, task_map):
-                if isinstance(result, Exception):
-                    _LOGGER.debug("Query failed for %s %s %s: %s", entity_type, entity_id, field, result)
-                    continue
 
-                if result is None:
-                    _LOGGER.debug("No response for %s %s %s (likely timeout)", entity_type, entity_id, field)
-                    continue
+            # Bulk query zone volumes
+            result = await self.client.get_value("ALL_ZONES", "VOLUME")
+            if result:
+                values = result.arguments.split("^")
+                for i, raw in enumerate(values[: self.zone_count], start=1):
+                    parsed = parse_float(raw)
+                    _LOGGER.debug("Zone %d volume: raw=%s parsed=%s", i, raw, parsed)
+                    zones[i]["volume_db"] = parsed
 
-                if entity_type == "zone":
-                    if field == "volume_db":
-                        parsed = parse_float(result.arguments)
-                        _LOGGER.debug("Zone %d volume: raw=%s parsed=%s", entity_id, result.arguments, parsed)
-                        zones[entity_id][field] = parsed
-                    elif field == "mute":
-                        parsed = parse_bool(result.arguments)
-                        _LOGGER.debug("Zone %d mute: raw=%s parsed=%s", entity_id, result.arguments, parsed)
-                        zones[entity_id][field] = parsed
-                    elif field == "route":
-                        parsed = parse_int(result.arguments)
-                        _LOGGER.debug("Zone %d route: raw=%s parsed=%s", entity_id, result.arguments, parsed)
-                        zones[entity_id][field] = parsed
-                elif entity_type == "gpo":
-                    if field == "enabled":
-                        parsed = parse_bool(result.arguments)
-                        _LOGGER.debug("GPO %d enabled: raw=%s parsed=%s", entity_id, result.arguments, parsed)
-                        gpos[entity_id][field] = parsed
+            # Bulk query zone mutes
+            result = await self.client.get_value("ALL_ZONES", "MUTE")
+            if result:
+                values = result.arguments.split("^")
+                for i, raw in enumerate(values[: self.zone_count], start=1):
+                    parsed = parse_bool(raw)
+                    _LOGGER.debug("Zone %d mute: raw=%s parsed=%s", i, raw, parsed)
+                    zones[i]["mute"] = parsed
+
+            # Bulk query zone routes
+            result = await self.client.get_value("ALL_ZONES", "ROUTE")
+            if result:
+                values = result.arguments.split("^")
+                for i, raw in enumerate(values[: self.zone_count], start=1):
+                    parsed = parse_int(raw)
+                    _LOGGER.debug("Zone %d route: raw=%s parsed=%s", i, raw, parsed)
+                    zones[i]["route"] = parsed
+
+            # Bulk query GPO states
+            result = await self.client.get_value("ALL_GPIO", "GPO_ENABLE")
+            if result:
+                values = result.arguments.split("^")
+                for i, raw in enumerate(values[: self.gpo_count], start=1):
+                    parsed = parse_bool(raw)
+                    _LOGGER.debug("GPO %d enabled: raw=%s parsed=%s", i, raw, parsed)
+                    gpos[i]["enabled"] = parsed
 
             _LOGGER.debug("Coordinator update complete: zones=%s gpos=%s", zones, gpos)
             return {"zones": zones, "gpos": gpos}
