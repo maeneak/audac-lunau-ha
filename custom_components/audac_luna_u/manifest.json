@@ -1,11 +1,12 @@
 {
   "domain": "audac_luna_u",
   "name": "Audac Luna-U",
-  "version": "0.3.1",
+  "version": "0.4",
   "config_flow": true,
   "documentation": "https://github.com/maeneak/audac-lunau-ha",
   "issue_tracker": "https://github.com/maeneak/audac-lunau-ha/issues",
   "requirements": [],
   "codeowners": ["@maeneak"],
+  "integration_type": "hub",
   "iot_class": "local_polling"
 }

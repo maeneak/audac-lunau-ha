@@ -20,6 +20,3 @@ CONF_ZONES = "zones"
 CONF_INPUTS = "inputs"
 CONF_GPO_COUNT = "gpo_count"
 CONF_POLL_INTERVAL = "poll_interval"
-
-DATA_CLIENT = "client"
-DATA_COORDINATOR = "coordinator"

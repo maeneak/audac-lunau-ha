@@ -2,39 +2,37 @@
 from __future__ import annotations
 
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from . import LunaUConfigEntry, _device_uid
 from .const import (
     DOMAIN,
     DEFAULT_GPO_COUNT,
     CONF_GPO_COUNT,
-    DATA_COORDINATOR,
 )
 from .coordinator import LunaUCoordinator
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities,
+    entry: LunaUConfigEntry,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
-    data = hass.data[DOMAIN][entry.entry_id]
-    coordinator: LunaUCoordinator = data[DATA_COORDINATOR]
-
+    coordinator = entry.runtime_data.coordinator
+    uid = _device_uid(entry)
     gpo_count = entry.options.get(CONF_GPO_COUNT, DEFAULT_GPO_COUNT)
 
-    entities = [
+    async_add_entities(
         LunaGpoSwitch(
             coordinator=coordinator,
-            entry_id=entry.entry_id,
+            uid=uid,
             gpo_index=i + 1,
         )
         for i in range(gpo_count)
-    ]
-    async_add_entities(entities)
+    )
 
 
 class LunaGpoSwitch(CoordinatorEntity[LunaUCoordinator], SwitchEntity):
@@ -45,31 +43,19 @@ class LunaGpoSwitch(CoordinatorEntity[LunaUCoordinator], SwitchEntity):
     def __init__(
         self,
         coordinator: LunaUCoordinator,
-        entry_id: str,
+        uid: str,
         gpo_index: int,
     ) -> None:
         super().__init__(coordinator)
-        self._entry_id = entry_id
         self._gpo = gpo_index
-
-    @property
-    def unique_id(self) -> str:
-        return f"{self._entry_id}_gpo_{self._gpo}"
-
-    @property
-    def name(self) -> str:
-        """Name of the entity within the device."""
-        return f"GPIO {self._gpo}"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device info - all GPIOs share a single device."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, f"{self._entry_id}_gpios")},
+        self._attr_unique_id = f"{uid}_gpo_{gpo_index}"
+        self._attr_name = f"GPIO {gpo_index}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{uid}_gpios")},
             name="GPIO Outputs",
             manufacturer="Audac",
             model="Luna-U GPIOs",
-            via_device=(DOMAIN, self._entry_id),
+            via_device=(DOMAIN, uid),
         )
 
     @property

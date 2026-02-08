@@ -79,9 +79,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
 
-    async def async_step_import(self, user_input: dict[str, Any]):
-        return await self.async_step_user(user_input)
-
     async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None):
         """Handle reconfiguration of the integration."""
         errors = {}

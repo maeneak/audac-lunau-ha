@@ -10,6 +10,15 @@
           "port": "Port",
           "address": "Device address"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Luna-U",
+        "description": "Update connection details for your Luna-U device.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "address": "Device address"
+        }
       }
     },
     "error": {

@@ -10,6 +10,15 @@
           "port": "Port",
           "address": "Device address"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Luna-U",
+        "description": "Update connection details for your Luna-U device.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "address": "Device address"
+        }
       }
     },
     "error": {
@@ -19,26 +28,18 @@
   "options": {
     "step": {
       "init": {
-        "title": "Luna-U Options",
-        "description": "Configure zone, input, and GPIO counts.",
+        "title": "Luna-U Configuration (Step 1 of 2)",
+        "description": "Configure zone, input, and GPIO counts. Each zone will be created as a separate device. All GPIOs will be grouped under a single 'GPIO Outputs' device.\n\nClick Submit to continue to input naming.",
         "data": {
-          "zones": "Zones",
-          "inputs": "Inputs",
-          "gpo_count": "GPIO outputs",
+          "zones": "Number of zones",
+          "inputs": "Number of inputs",
+          "gpo_count": "Number of GPIO outputs",
           "poll_interval": "Poll interval (seconds)"
         }
       },
-      "zone_names": {
-        "title": "Zone Names",
-        "description": "Set a custom name for each zone."
-      },
       "input_names": {
-        "title": "Input Names",
-        "description": "Set a custom name for each input."
-      },
-      "gpo_names": {
-        "title": "GPIO Names",
-        "description": "Set a custom name for each GPIO output."
+        "title": "Input Names (Step 2 of 2)",
+        "description": "Name your inputs. These names will appear as source options when selecting inputs for zones."
       }
     }
   }

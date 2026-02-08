@@ -1,6 +1,7 @@
 """Audac Luna-U integration."""
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
 import re
 import voluptuous as vol
@@ -28,8 +29,6 @@ from .const import (
     CONF_INPUTS,
     CONF_GPO_COUNT,
     CONF_POLL_INTERVAL,
-    DATA_CLIENT,
-    DATA_COORDINATOR,
 )
 
 PLATFORMS: list[Platform] = [Platform.MEDIA_PLAYER, Platform.SWITCH]
@@ -47,15 +46,19 @@ APPLY_SNAPSHOT_SCHEMA = vol.Schema(
 )
 
 
+@dataclass
+class LunaURuntimeData:
+    """Runtime data for a Luna-U config entry."""
+
+    client: LunaUClient
+    coordinator: LunaUCoordinator
+
+
+type LunaUConfigEntry = ConfigEntry[LunaURuntimeData]
+
+
 def _cleanup_legacy_naming_keys(options: dict) -> dict:
-    """Remove legacy zone/GPIO name keys from options.
-
-    In older versions, zones and GPIOs were named during config flow and stored as:
-    'Zone 1', 'Zone 2', 'GPIO 1', 'GPIO 2', etc.
-
-    Now these are device names that users can rename in the UI.
-    This function removes the old keys to prevent config bloat.
-    """
+    """Remove legacy zone/GPIO name keys from options."""
     pattern = re.compile(r"^(Zone|GPIO) \d+$")
     cleaned = {k: v for k, v in options.items() if not pattern.match(k)}
 
@@ -68,7 +71,14 @@ def _cleanup_legacy_naming_keys(options: dict) -> dict:
     return cleaned
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+def _device_uid(entry: ConfigEntry) -> str:
+    """Return a stable device identifier base from config entry data."""
+    host = entry.data[CONF_HOST]
+    address = entry.data.get(CONF_ADDRESS, DEFAULT_ADDRESS)
+    return f"{host}_{address}"
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: LunaUConfigEntry) -> bool:
     host = entry.data[CONF_HOST]
     port = entry.data.get(CONF_PORT, DEFAULT_PORT)
     address = entry.data.get(CONF_ADDRESS, DEFAULT_ADDRESS)
@@ -105,16 +115,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await client.close()
         raise ConfigEntryNotReady(str(exc)) from exc
 
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
-        DATA_CLIENT: client,
-        DATA_COORDINATOR: coordinator,
-    }
+    entry.runtime_data = LunaURuntimeData(client=client, coordinator=coordinator)
 
     # Register the main Luna-U controller device
+    uid = _device_uid(entry)
     device_registry = dr.async_get(hass)
     device_registry.async_get_or_create(
         config_entry_id=entry.entry_id,
-        identifiers={(DOMAIN, entry.entry_id)},
+        identifiers={(DOMAIN, uid)},
         name="Audac Luna-U",
         manufacturer="Audac",
         model="Luna-U",
@@ -124,73 +132,83 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
-    # Register apply_snapshot service
-    async def async_handle_apply_snapshot(call: ServiceCall) -> None:
-        """Handle apply_snapshot service call."""
-        try:
-            snapshot_name = call.data[ATTR_SNAPSHOT_NAME]
-            # Validate and sanitize snapshot name
-            sanitized_name = validate_snapshot_name(snapshot_name)
-            # Build the snapshot path as expected by the device
-            snapshot_path = f"settings/snapshots/{sanitized_name}.snapshot"
-            _LOGGER.debug("Applying snapshot: %s", snapshot_path)
-            
-            targets = []
-            if "device_id" in call.data:
-                target_devices = set(call.data["device_id"])
-                dev_reg = dr.async_get(hass)
-                for device_id in target_devices:
-                    device = dev_reg.async_get(device_id)
-                    if device:
-                        for entry_id in device.config_entries:
-                            if entry_id in hass.data.get(DOMAIN, {}):
-                                targets.append(hass.data[DOMAIN][entry_id][DATA_CLIENT])
-            else:
-                # Send to all configured clients
-                for entry_data in hass.data.get(DOMAIN, {}).values():
-                    targets.append(entry_data[DATA_CLIENT])
-
-            # Send to identified clients
-            for client in targets:
-                try:
-                    await client.set_value(
-                        target="SNAPSHOTS>1",
-                        command="APPLY_SNAPSHOT",
-                        arguments=snapshot_path,
-                        wait_for_response=False,
-                    )
-                except Exception as exc:
-                    _LOGGER.error("Failed to apply snapshot to device: %s", exc)
-        except ValueError as exc:
-            _LOGGER.error("Invalid snapshot name: %s", exc)
-        except Exception as exc:
-            _LOGGER.error("Failed to apply snapshot: %s", exc)
-
-    # Only register service once for the domain
+    # Register apply_snapshot service (once per domain)
     if not hass.services.has_service(DOMAIN, SERVICE_APPLY_SNAPSHOT):
         hass.services.async_register(
             DOMAIN,
             SERVICE_APPLY_SNAPSHOT,
-            async_handle_apply_snapshot,
+            _async_handle_apply_snapshot,
             schema=APPLY_SNAPSHOT_SCHEMA,
         )
 
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def _async_handle_apply_snapshot(call: ServiceCall) -> None:
+    """Handle apply_snapshot service call."""
+    hass = call.hass
+    try:
+        snapshot_name = call.data[ATTR_SNAPSHOT_NAME]
+        sanitized_name = validate_snapshot_name(snapshot_name)
+        snapshot_path = f"settings/snapshots/{sanitized_name}.snapshot"
+        _LOGGER.debug("Applying snapshot: %s", snapshot_path)
+
+        targets: list[LunaUClient] = []
+        if "device_id" in call.data:
+            target_devices = set(call.data["device_id"])
+            dev_reg = dr.async_get(hass)
+            for device_id in target_devices:
+                device = dev_reg.async_get(device_id)
+                if device:
+                    for eid in device.config_entries:
+                        entry = hass.config_entries.async_get_entry(eid)
+                        if entry and hasattr(entry, "runtime_data") and entry.runtime_data:
+                            targets.append(entry.runtime_data.client)
+        else:
+            for entry in hass.config_entries.async_entries(DOMAIN):
+                if hasattr(entry, "runtime_data") and entry.runtime_data:
+                    targets.append(entry.runtime_data.client)
+
+        for client in targets:
+            try:
+                await client.set_value(
+                    target="SNAPSHOTS>1",
+                    command="APPLY_SNAPSHOT",
+                    arguments=snapshot_path,
+                    wait_for_response=False,
+                )
+            except Exception as exc:
+                _LOGGER.error("Failed to apply snapshot to device: %s", exc)
+    except ValueError as exc:
+        _LOGGER.error("Invalid snapshot name: %s", exc)
+    except Exception as exc:
+        _LOGGER.error("Failed to apply snapshot: %s", exc)
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: LunaUConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        data = hass.data[DOMAIN].pop(entry.entry_id)
-        client: LunaUClient = data[DATA_CLIENT]
-        await client.close()
-        
-        # Unregister service if this is the last entry
-        if not hass.data[DOMAIN]:
+        await entry.runtime_data.client.close()
+
+        # Unregister service if no entries remain
+        if not hass.config_entries.async_entries(DOMAIN):
             hass.services.async_remove(DOMAIN, SERVICE_APPLY_SNAPSHOT)
     return unload_ok
 
 
-async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,
+    config_entry: LunaUConfigEntry,
+    device_entry: dr.DeviceEntry,
+) -> bool:
+    """Allow removal of child devices (zones/GPIOs) that are no longer needed."""
+    uid = _device_uid(config_entry)
+    # Don't allow removing the main controller device
+    if (DOMAIN, uid) in device_entry.identifiers:
+        return False
+    return True
+
+
+async def _async_update_listener(hass: HomeAssistant, entry: LunaUConfigEntry) -> None:
     """Handle options updates."""
     await hass.config_entries.async_reload(entry.entry_id)

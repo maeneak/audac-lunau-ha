@@ -3,21 +3,24 @@ from __future__ import annotations
 
 from homeassistant.components.media_player import (
     MediaPlayerEntity,
+    MediaPlayerEntityFeature,
     MediaPlayerState,
 )
-from homeassistant.components.media_player.const import MediaPlayerEntityFeature
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from . import LunaUConfigEntry, _device_uid
 from .const import (
     DOMAIN,
+    DEFAULT_ADDRESS,
     DEFAULT_INPUTS,
     DEFAULT_ZONES,
+    CONF_ADDRESS,
     CONF_INPUTS,
     CONF_ZONES,
-    DATA_COORDINATOR,
 )
 from .coordinator import LunaUCoordinator
 
@@ -49,63 +52,58 @@ def _get_input_names(config: dict, count: int) -> list[str]:
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities,
+    entry: LunaUConfigEntry,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
-    data = hass.data[DOMAIN][entry.entry_id]
-    coordinator: LunaUCoordinator = data[DATA_COORDINATOR]
+    coordinator = entry.runtime_data.coordinator
+    uid = _device_uid(entry)
 
     zone_count = entry.options.get(CONF_ZONES, DEFAULT_ZONES)
     input_count = entry.options.get(CONF_INPUTS, DEFAULT_INPUTS)
     input_names = _get_input_names(entry.options, input_count)
 
-    entities = [
+    async_add_entities(
         LunaZoneMediaPlayer(
             coordinator=coordinator,
-            entry_id=entry.entry_id,
+            uid=uid,
             zone_index=i + 1,
             input_names=input_names,
         )
         for i in range(zone_count)
-    ]
-    async_add_entities(entities)
+    )
 
 
 class LunaZoneMediaPlayer(CoordinatorEntity[LunaUCoordinator], MediaPlayerEntity):
     """Representation of a Luna-U zone."""
 
     _attr_has_entity_name = True
+    _attr_name = None
+    _attr_supported_features = (
+        MediaPlayerEntityFeature.VOLUME_SET
+        | MediaPlayerEntityFeature.VOLUME_MUTE
+        | MediaPlayerEntityFeature.VOLUME_STEP
+        | MediaPlayerEntityFeature.SELECT_SOURCE
+        | MediaPlayerEntityFeature.TURN_ON
+        | MediaPlayerEntityFeature.TURN_OFF
+    )
 
     def __init__(
         self,
         coordinator: LunaUCoordinator,
-        entry_id: str,
+        uid: str,
         zone_index: int,
         input_names: list[str],
     ) -> None:
         super().__init__(coordinator)
-        self._entry_id = entry_id
         self._zone = zone_index
         self._input_names = input_names
-
-    @property
-    def unique_id(self) -> str:
-        return f"{self._entry_id}_zone_{self._zone}"
-
-    @property
-    def name(self) -> str:
-        """Name of the entity within the device."""
-        return "Media Player"
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return device info for this zone."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, f"{self._entry_id}_zone_{self._zone}")},
-            name=f"Zone {self._zone}",
+        self._attr_unique_id = f"{uid}_zone_{zone_index}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{uid}_zone_{zone_index}")},
+            name=f"Zone {zone_index}",
             manufacturer="Audac",
             model="Luna-U Zone",
-            via_device=(DOMAIN, self._entry_id),
+            via_device=(DOMAIN, uid),
         )
 
     @property
@@ -114,18 +112,6 @@ class LunaZoneMediaPlayer(CoordinatorEntity[LunaUCoordinator], MediaPlayerEntity
         if not self.coordinator.data:
             return {}
         return self.coordinator.data.get("zones", {}).get(self._zone, {})
-
-    @property
-    def supported_features(self) -> MediaPlayerEntityFeature:
-        """Return the supported features."""
-        return (
-            MediaPlayerEntityFeature.VOLUME_SET
-            | MediaPlayerEntityFeature.VOLUME_MUTE
-            | MediaPlayerEntityFeature.VOLUME_STEP
-            | MediaPlayerEntityFeature.SELECT_SOURCE
-            | MediaPlayerEntityFeature.TURN_ON
-            | MediaPlayerEntityFeature.TURN_OFF
-        )
 
     @property
     def available(self) -> bool:
@@ -137,7 +123,6 @@ class LunaZoneMediaPlayer(CoordinatorEntity[LunaUCoordinator], MediaPlayerEntity
         zone_state = self._zone_state
         muted = zone_state.get("mute")
         route = zone_state.get("route")
-        # If missing data, muted, or no source selected, show as idle
         if muted is None or route is None:
             return MediaPlayerState.IDLE
         if muted or route == 0:
@@ -163,12 +148,12 @@ class LunaZoneMediaPlayer(CoordinatorEntity[LunaUCoordinator], MediaPlayerEntity
         if route is None:
             return None
         if route == -1:
-            return "Mixed"  # Mixed mode (not settable via single route)
+            return "Mixed"
         if route == 0:
             return "Off"
         if 1 <= route <= len(self._input_names):
             return self._input_names[route - 1]
-        return f"Input {route}"  # Fallback for inputs beyond configured count
+        return f"Input {route}"
 
     async def async_set_volume_level(self, volume: float) -> None:
         db = _level_to_db(volume)
