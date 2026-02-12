@@ -1,0 +1,6 @@
+[run]
+branch = True
+source = custom_components/audac_luna_u
+
+[report]
+show_missing = True

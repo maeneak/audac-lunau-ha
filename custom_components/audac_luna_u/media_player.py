@@ -58,8 +58,8 @@ async def async_setup_entry(
     coordinator = entry.runtime_data.coordinator
     uid = _device_uid(entry)
 
-    zone_count = entry.options.get(CONF_ZONES, DEFAULT_ZONES)
-    input_count = entry.options.get(CONF_INPUTS, DEFAULT_INPUTS)
+    zone_count = int(entry.options.get(CONF_ZONES, DEFAULT_ZONES))
+    input_count = int(entry.options.get(CONF_INPUTS, DEFAULT_INPUTS))
     input_names = _get_input_names(entry.options, input_count)
 
     async_add_entities(
@@ -114,10 +114,6 @@ class LunaZoneMediaPlayer(CoordinatorEntity[LunaUCoordinator], MediaPlayerEntity
         return self.coordinator.data.get("zones", {}).get(self._zone, {})
 
     @property
-    def available(self) -> bool:
-        return self.coordinator.last_update_success
-
-    @property
     def state(self) -> MediaPlayerState:
         """Return the state of the zone."""
         zone_state = self._zone_state
@@ -163,7 +159,7 @@ class LunaZoneMediaPlayer(CoordinatorEntity[LunaUCoordinator], MediaPlayerEntity
             arguments=str(db),
             wait_for_response=False,
         )
-        self.coordinator.update_zone(self._zone, volume_db=db)
+        self.coordinator.update_zone(self._zone, volume_db=float(db))
 
     async def async_mute_volume(self, mute: bool) -> None:
         await self.coordinator.client.set_value(

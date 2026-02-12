@@ -64,8 +64,17 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             client = LunaUClient(host, port, address)
             try:
                 await client.connect()
-            except Exception:
-                _LOGGER.exception("Failed to connect to Luna-U")
+            except (ConnectionError, OSError, TimeoutError) as exc:
+                _LOGGER.debug("Failed to connect to Luna-U at %s:%s: %s", host, port, exc)
+                errors["base"] = "cannot_connect"
+            except Exception as exc:  # pragma: no cover - defensive
+                _LOGGER.debug(
+                    "Unexpected error connecting to Luna-U at %s:%s: %s",
+                    host,
+                    port,
+                    exc,
+                    exc_info=True,
+                )
                 errors["base"] = "cannot_connect"
             else:
                 return self.async_create_entry(
@@ -92,8 +101,17 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             client = LunaUClient(host, port, address)
             try:
                 await client.connect()
-            except Exception:
-                _LOGGER.exception("Failed to connect to Luna-U")
+            except (ConnectionError, OSError, TimeoutError) as exc:
+                _LOGGER.debug("Failed to connect to Luna-U at %s:%s: %s", host, port, exc)
+                errors["base"] = "cannot_connect"
+            except Exception as exc:  # pragma: no cover - defensive
+                _LOGGER.debug(
+                    "Unexpected error connecting to Luna-U at %s:%s: %s",
+                    host,
+                    port,
+                    exc,
+                    exc_info=True,
+                )
                 errors["base"] = "cannot_connect"
             else:
                 # Update the config entry with new values

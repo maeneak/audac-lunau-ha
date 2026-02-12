@@ -78,6 +78,8 @@ GPIO outputs are exposed as switches. Turning a switch on/off triggers:
 - Verify the Luna-U is reachable on TCP port `5001`.
 - Ensure the device address matches the Luna-U configuration.
 - If entities show `unknown`, increase the poll interval or confirm the Luna-U responds to `GET_REQ`.
+- If the hardware is powered off or unreachable, the coordinator logs one `info` transition to unavailable, then retries with exponential backoff (`15s`, `30s`, `60s`, `120s`, `240s`, capped at `300s`).
+- The `audac_luna_u.apply_snapshot` service now raises explicit validation/runtime errors (instead of silently logging) when inputs are invalid or device commands fail.
 
 **Contributing**
 PRs welcome. If you have protocol examples or a simulator, please share them to improve parsing and reliability.

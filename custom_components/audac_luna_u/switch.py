@@ -23,7 +23,7 @@ async def async_setup_entry(
 ) -> None:
     coordinator = entry.runtime_data.coordinator
     uid = _device_uid(entry)
-    gpo_count = entry.options.get(CONF_GPO_COUNT, DEFAULT_GPO_COUNT)
+    gpo_count = int(entry.options.get(CONF_GPO_COUNT, DEFAULT_GPO_COUNT))
 
     async_add_entities(
         LunaGpoSwitch(
@@ -49,7 +49,7 @@ class LunaGpoSwitch(CoordinatorEntity[LunaUCoordinator], SwitchEntity):
         super().__init__(coordinator)
         self._gpo = gpo_index
         self._attr_unique_id = f"{uid}_gpo_{gpo_index}"
-        self._attr_name = f"GPIO {gpo_index}"
+        self._attr_name = f"GPO {gpo_index}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{uid}_gpios")},
             name="GPIO Outputs",
@@ -62,10 +62,6 @@ class LunaGpoSwitch(CoordinatorEntity[LunaUCoordinator], SwitchEntity):
     def is_on(self) -> bool | None:
         state = self.coordinator.data.get("gpos", {}).get(self._gpo, {}) if self.coordinator.data else {}
         return state.get("enabled")
-
-    @property
-    def available(self) -> bool:
-        return self.coordinator.last_update_success
 
     async def async_turn_on(self, **kwargs) -> None:
         await self.coordinator.client.set_value(

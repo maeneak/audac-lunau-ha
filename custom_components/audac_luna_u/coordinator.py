@@ -1,6 +1,7 @@
 """Coordinator for polling Luna-U state."""
 from __future__ import annotations
 
+import asyncio
 import copy
 from datetime import timedelta
 import logging
@@ -18,6 +19,9 @@ _LOGGER = logging.getLogger(__name__)
 
 class LunaUCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """DataUpdateCoordinator for Luna-U."""
+
+    OFFLINE_RETRY_BASE_SECONDS = 15
+    OFFLINE_RETRY_MAX_SECONDS = 300
 
     def __init__(
         self,
@@ -38,14 +42,32 @@ class LunaUCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.zone_count = zone_count
         self.input_count = input_count
         self.gpo_count = gpo_count
+        self._offline_failures = 0
+        self._was_available = True
+
+    def _next_offline_retry_delay(self) -> int:
+        """Return next retry delay for unavailable transport failures."""
+        self._offline_failures += 1
+        return min(
+            self.OFFLINE_RETRY_MAX_SECONDS,
+            self.OFFLINE_RETRY_BASE_SECONDS * (2 ** (self._offline_failures - 1)),
+        )
+
+    def _mark_available(self) -> None:
+        """Reset unavailable state and log recovery transition once."""
+        if not self._was_available:
+            _LOGGER.info(
+                "Luna-U at %s:%s is reachable again",
+                self.client.host,
+                self.client.port,
+            )
+        self._was_available = True
+        self._offline_failures = 0
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
             if not self.client.connected:
-                try:
-                    await self.client.ensure_connected()
-                except ConnectionError as exc:
-                    raise UpdateFailed(f"Device unreachable: {exc}") from exc
+                await self.client.ensure_connected()
 
             zones: dict[int, dict[str, Any]] = {i: {} for i in range(1, self.zone_count + 1)}
             gpos: dict[int, dict[str, Any]] = {i: {} for i in range(1, self.gpo_count + 1)}
@@ -87,7 +109,30 @@ class LunaUCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     gpos[i]["enabled"] = parsed
 
             _LOGGER.debug("Coordinator update complete: zones=%s gpos=%s", zones, gpos)
+            self._mark_available()
             return {"zones": zones, "gpos": gpos}
+        except (ConnectionError, OSError, TimeoutError, asyncio.TimeoutError) as exc:
+            retry_delay = self._next_offline_retry_delay()
+            if self._was_available:
+                _LOGGER.info(
+                    "Luna-U at %s:%s became unavailable: %s",
+                    self.client.host,
+                    self.client.port,
+                    exc,
+                )
+                self._was_available = False
+            else:
+                _LOGGER.debug(
+                    "Luna-U at %s:%s still unavailable: %s. Next retry in %ss",
+                    self.client.host,
+                    self.client.port,
+                    exc,
+                    retry_delay,
+                )
+            raise UpdateFailed(
+                f"Device unavailable: {exc}",
+                retry_after=timedelta(seconds=retry_delay),
+            ) from exc
         except Exception as exc:
             raise UpdateFailed(str(exc)) from exc
 

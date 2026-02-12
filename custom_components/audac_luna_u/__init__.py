@@ -7,7 +7,11 @@ import re
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import (
+    ConfigEntryNotReady,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
 import homeassistant.helpers.config_validation as cv
@@ -54,7 +58,10 @@ class LunaURuntimeData:
     coordinator: LunaUCoordinator
 
 
-type LunaUConfigEntry = ConfigEntry[LunaURuntimeData]
+try:
+    LunaUConfigEntry = ConfigEntry[LunaURuntimeData]
+except TypeError:  # pragma: no cover - older typing runtime
+    LunaUConfigEntry = ConfigEntry
 
 
 def _cleanup_legacy_naming_keys(options: dict) -> dict:
@@ -89,10 +96,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: LunaUConfigEntry) -> boo
         if cleaned_options != entry.options:
             hass.config_entries.async_update_entry(entry, options=cleaned_options)
 
-    zone_count = entry.options.get(CONF_ZONES, DEFAULT_ZONES)
-    input_count = entry.options.get(CONF_INPUTS, DEFAULT_INPUTS)
-    gpo_count = entry.options.get(CONF_GPO_COUNT, DEFAULT_GPO_COUNT)
-    poll_interval = entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
+    zone_count = int(entry.options.get(CONF_ZONES, DEFAULT_ZONES))
+    input_count = int(entry.options.get(CONF_INPUTS, DEFAULT_INPUTS))
+    gpo_count = int(entry.options.get(CONF_GPO_COUNT, DEFAULT_GPO_COUNT))
+    poll_interval = int(entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL))
 
     client = LunaUClient(host, port, address)
     try:
@@ -126,7 +133,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: LunaUConfigEntry) -> boo
         name="Audac Luna-U",
         manufacturer="Audac",
         model="Luna-U",
-        configuration_url=f"http://{host}:{port}",
+        configuration_url=f"http://{host}",
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -147,42 +154,81 @@ async def async_setup_entry(hass: HomeAssistant, entry: LunaUConfigEntry) -> boo
 async def _async_handle_apply_snapshot(call: ServiceCall) -> None:
     """Handle apply_snapshot service call."""
     hass = call.hass
+    snapshot_name = call.data[ATTR_SNAPSHOT_NAME]
     try:
-        snapshot_name = call.data[ATTR_SNAPSHOT_NAME]
         sanitized_name = validate_snapshot_name(snapshot_name)
-        snapshot_path = f"settings/snapshots/{sanitized_name}.snapshot"
-        _LOGGER.debug("Applying snapshot: %s", snapshot_path)
-
-        targets: list[LunaUClient] = []
-        if "device_id" in call.data:
-            target_devices = set(call.data["device_id"])
-            dev_reg = dr.async_get(hass)
-            for device_id in target_devices:
-                device = dev_reg.async_get(device_id)
-                if device:
-                    for eid in device.config_entries:
-                        entry = hass.config_entries.async_get_entry(eid)
-                        if entry and hasattr(entry, "runtime_data") and entry.runtime_data:
-                            targets.append(entry.runtime_data.client)
-        else:
-            for entry in hass.config_entries.async_entries(DOMAIN):
-                if hasattr(entry, "runtime_data") and entry.runtime_data:
-                    targets.append(entry.runtime_data.client)
-
-        for client in targets:
-            try:
-                await client.set_value(
-                    target="SNAPSHOTS>1",
-                    command="APPLY_SNAPSHOT",
-                    arguments=snapshot_path,
-                    wait_for_response=False,
-                )
-            except Exception as exc:
-                _LOGGER.error("Failed to apply snapshot to device: %s", exc)
     except ValueError as exc:
-        _LOGGER.error("Invalid snapshot name: %s", exc)
-    except Exception as exc:
-        _LOGGER.error("Failed to apply snapshot: %s", exc)
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="invalid_snapshot_name",
+        ) from exc
+
+    snapshot_path = f"settings/snapshots/{sanitized_name}.snapshot"
+    _LOGGER.debug("Applying snapshot: %s", snapshot_path)
+
+    targets: list[LunaUClient] = []
+    seen_clients: set[int] = set()
+
+    if "device_id" in call.data:
+        target_devices = set(call.data["device_id"])
+        dev_reg = dr.async_get(hass)
+        for device_id in target_devices:
+            device = dev_reg.async_get(device_id)
+            if not device:
+                continue
+            for eid in device.config_entries:
+                entry = hass.config_entries.async_get_entry(eid)
+                runtime_data = getattr(entry, "runtime_data", None) if entry else None
+                client = getattr(runtime_data, "client", None)
+                if isinstance(client, LunaUClient) and id(client) not in seen_clients:
+                    seen_clients.add(id(client))
+                    targets.append(client)
+        if not targets:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="no_target_devices",
+            )
+    else:
+        for entry in hass.config_entries.async_entries(DOMAIN):
+            runtime_data = getattr(entry, "runtime_data", None)
+            client = getattr(runtime_data, "client", None)
+            if isinstance(client, LunaUClient) and id(client) not in seen_clients:
+                seen_clients.add(id(client))
+                targets.append(client)
+        if not targets:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="no_loaded_devices",
+            )
+
+    failures: list[str] = []
+    for client in targets:
+        try:
+            await client.set_value(
+                target="SNAPSHOTS>1",
+                command="APPLY_SNAPSHOT",
+                arguments=snapshot_path,
+                wait_for_response=False,
+            )
+        except Exception as exc:
+            _LOGGER.debug(
+                "Failed to apply snapshot on %s:%s: %s",
+                client.host,
+                client.port,
+                exc,
+                exc_info=True,
+            )
+            failures.append(f"{client.host}:{client.port} ({exc})")
+
+    if failures:
+        raise HomeAssistantError(
+            translation_domain=DOMAIN,
+            translation_key="apply_snapshot_failed",
+            translation_placeholders={
+                "count": str(len(failures)),
+                "details": "; ".join(failures),
+            },
+        )
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: LunaUConfigEntry) -> bool:
@@ -190,8 +236,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: LunaUConfigEntry) -> bo
     if unload_ok:
         await entry.runtime_data.client.close()
 
-        # Unregister service if no entries remain
-        if not hass.config_entries.async_entries(DOMAIN):
+        # Unregister service if no other entries remain
+        remaining = [
+            e for e in hass.config_entries.async_entries(DOMAIN)
+            if e.entry_id != entry.entry_id
+        ]
+        if not remaining:
             hass.services.async_remove(DOMAIN, SERVICE_APPLY_SNAPSHOT)
     return unload_ok
 

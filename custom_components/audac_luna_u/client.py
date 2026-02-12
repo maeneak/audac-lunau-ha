@@ -102,6 +102,16 @@ class LunaUClient:
         return f"LUNA_U>{self._address}"
 
     @property
+    def host(self) -> str:
+        """Return configured TCP host."""
+        return self._host
+
+    @property
+    def port(self) -> int:
+        """Return configured TCP port."""
+        return self._port
+
+    @property
     def source(self) -> str:
         return f"CLIENT>{self._source_id}"
 
@@ -141,24 +151,40 @@ class LunaUClient:
             # Re-check after acquiring lock — another coroutine may have reconnected
             if self._connected.is_set():
                 return
+
             # Clean up any stale connection resources before reconnecting
             await self._close_unlocked()
+            last_exc: Exception | None = None
             for attempt in range(self.MAX_RECONNECT_ATTEMPTS):
                 try:
                     await self._connect_unlocked()
                     return
                 except Exception as exc:
-                    delay = self.RECONNECT_BASE_DELAY * (2 ** attempt)
-                    _LOGGER.warning(
-                        "Connection attempt %d/%d failed: %s. Retrying in %.1fs",
-                        attempt + 1, self.MAX_RECONNECT_ATTEMPTS, exc, delay,
-                    )
+                    last_exc = exc
                     if attempt < self.MAX_RECONNECT_ATTEMPTS - 1:
+                        delay = self.RECONNECT_BASE_DELAY * (2 ** attempt)
+                        _LOGGER.debug(
+                            "Connection attempt %d/%d failed: %s. Retrying in %.1fs",
+                            attempt + 1,
+                            self.MAX_RECONNECT_ATTEMPTS,
+                            exc,
+                            delay,
+                        )
                         await asyncio.sleep(delay)
+                    else:
+                        _LOGGER.debug(
+                            "Connection attempt %d/%d failed: %s",
+                            attempt + 1,
+                            self.MAX_RECONNECT_ATTEMPTS,
+                            exc,
+                        )
+
+            if last_exc is None:
+                last_exc = ConnectionError("Unknown reconnect failure")
             raise ConnectionError(
                 f"Failed to connect to Luna-U at {self._host}:{self._port} "
                 f"after {self.MAX_RECONNECT_ATTEMPTS} attempts"
-            )
+            ) from last_exc
 
     async def _close_unlocked(self) -> None:
         """Internal close without lock. Caller must hold _connect_lock."""

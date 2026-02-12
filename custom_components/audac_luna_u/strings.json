@@ -42,5 +42,19 @@
         "description": "Name your inputs. These names will appear as source options when selecting inputs for zones."
       }
     }
+  },
+  "exceptions": {
+    "invalid_snapshot_name": {
+      "message": "Snapshot name is invalid. Use only letters, numbers, spaces, hyphens, or underscores."
+    },
+    "no_target_devices": {
+      "message": "No Audac Luna-U device matched the selected device target(s)."
+    },
+    "no_loaded_devices": {
+      "message": "No loaded Audac Luna-U devices are currently available."
+    },
+    "apply_snapshot_failed": {
+      "message": "Failed to apply snapshot on {count} device(s): {details}"
+    }
   }
 }
